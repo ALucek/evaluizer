@@ -80,3 +80,5 @@ build/
 *.tmp
 .cache/
 
+# Testing Datasets
+testing_datasets/
