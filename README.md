@@ -5,12 +5,13 @@ composite score
 scoring attached to prompts
 GEPA optimizer with scoring/eval framework
 
-save eva; reports
+save eval reports
 
 styling
-
-clean up the llm config section on the left
 
 add in azure, vertex and gemini providers
 
 run individual evals once they're in there
+
+add in llm as a judge evals
+add in function evals (exact match, cosine similarity, other reward functions)
