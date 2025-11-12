@@ -19,7 +19,7 @@ router = APIRouter()
 async def create_evaluation(
     request: CreateEvaluationRequest,
     db: Session = Depends(get_db)
-):
+) -> EvaluationResponse:
     """Create a new evaluation for a CSV row"""
     # Verify CSV row exists
     csv_row = get_or_404(db, CSVRow, request.csv_row_id, "CSV row not found")
@@ -29,23 +29,30 @@ async def create_evaluation(
     if existing:
         raise HTTPException(status_code=400, detail="Evaluation already exists for this row")
     
-    evaluation = Evaluation(
-        csv_file_id=csv_row.csv_file_id,
-        csv_row_id=request.csv_row_id,
-        output=request.output,
-        annotation=request.annotation,
-        feedback=request.feedback
-    )
-    
-    db.add(evaluation)
-    db.commit()
-    db.refresh(evaluation)
-    
-    return evaluation
+    try:
+        evaluation = Evaluation(
+            csv_file_id=csv_row.csv_file_id,
+            csv_row_id=request.csv_row_id,
+            output=request.output,
+            annotation=request.annotation,
+            feedback=request.feedback
+        )
+        
+        db.add(evaluation)
+        db.commit()
+        db.refresh(evaluation)
+        
+        return evaluation
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating evaluation: {str(e)}")
 
 
 @router.get("/csv/{csv_id}", response_model=List[EvaluationResponse])
-async def get_evaluations_for_csv(csv_id: int, db: Session = Depends(get_db)):
+async def get_evaluations_for_csv(
+    csv_id: int, 
+    db: Session = Depends(get_db)
+) -> List[EvaluationResponse]:
     """Get all evaluations for a CSV file"""
     get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
@@ -54,7 +61,10 @@ async def get_evaluations_for_csv(csv_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/row/{row_id}", response_model=EvaluationResponse)
-async def get_evaluation_for_row(row_id: int, db: Session = Depends(get_db)):
+async def get_evaluation_for_row(
+    row_id: int, 
+    db: Session = Depends(get_db)
+) -> EvaluationResponse:
     """Get evaluation for a specific CSV row"""
     evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
     if not evaluation:
@@ -68,7 +78,7 @@ async def update_evaluation(
     row_id: int,
     request: UpdateEvaluationRequest,
     db: Session = Depends(get_db)
-):
+) -> EvaluationResponse:
     """Update evaluation for a specific CSV row (creates if doesn't exist)"""
     evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
     
@@ -91,14 +101,20 @@ async def update_evaluation(
             if field in request_dict:
                 setattr(evaluation, field, request_dict[field])
     
-    db.commit()
-    db.refresh(evaluation)
-    
-    return evaluation
+    try:
+        db.commit()
+        db.refresh(evaluation)
+        return evaluation
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating evaluation: {str(e)}")
 
 
 @router.delete("/row/{row_id}")
-async def delete_evaluation(row_id: int, db: Session = Depends(get_db)):
+async def delete_evaluation(
+    row_id: int, 
+    db: Session = Depends(get_db)
+) -> dict[str, str | int]:
     """Delete evaluation for a specific CSV row"""
     evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
     if not evaluation:

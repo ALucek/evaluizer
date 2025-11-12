@@ -18,53 +18,68 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=CSVFileResponse)
-async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_csv(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+) -> CSVFileResponse:
     """Upload a CSV file and store it in the database"""
     if not file.filename or not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV file")
     
-    # Read CSV file
-    contents = await file.read()
-    csv_file = io.StringIO(contents.decode('utf-8'))
-    reader = csv.DictReader(csv_file)
-    
-    # Get column names (original columns only, no eval columns)
-    columns = reader.fieldnames
-    if not columns:
-        raise HTTPException(status_code=400, detail="CSV file is empty or invalid")
+    try:
+        # Read CSV file
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="CSV file is empty")
+        
+        csv_string_io = io.StringIO(contents.decode('utf-8'))
+        reader = csv.DictReader(csv_string_io)
+        
+        # Get column names (original columns only, no eval columns)
+        columns = reader.fieldnames
+        if not columns:
+            raise HTTPException(status_code=400, detail="CSV file is empty or invalid")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="CSV file must be UTF-8 encoded")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading CSV file: {str(e)}")
     
     # Create CSVFile record
-    csv_file = CSVFile(
+    csv_file_record = CSVFile(
         filename=file.filename,
         columns=json.dumps(list(columns))
     )
-    db.add(csv_file)
+    db.add(csv_file_record)
     db.flush()  # Get the ID
     
     # Read and store rows (original data only)
     rows = []
-    for row_dict in reader:
-        row = CSVRow(
-            csv_file_id=csv_file.id,
-            row_data=json.dumps(row_dict)
-        )
-        rows.append(row)
-    
-    db.add_all(rows)
-    db.commit()
-    db.refresh(csv_file)
+    try:
+        for row_dict in reader:
+            row = CSVRow(
+                csv_file_id=csv_file_record.id,
+                row_data=json.dumps(row_dict)
+            )
+            rows.append(row)
+        
+        db.add_all(rows)
+        db.commit()
+        db.refresh(csv_file_record)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error storing CSV data: {str(e)}")
     
     return CSVFileResponse(
-        id=csv_file.id,
-        filename=csv_file.filename,
-        uploaded_at=csv_file.uploaded_at,
-        columns=parse_json_safe(csv_file.columns, []),
+        id=csv_file_record.id,
+        filename=csv_file_record.filename,
+        uploaded_at=csv_file_record.uploaded_at,
+        columns=parse_json_safe(csv_file_record.columns, []),
         row_count=len(rows)
     )
 
 
 @router.get("/", response_model=List[CSVFileResponse])
-async def list_csv_files(db: Session = Depends(get_db)):
+async def list_csv_files(db: Session = Depends(get_db)) -> List[CSVFileResponse]:
     """List all uploaded CSV files"""
     csv_files = db.query(CSVFile).all()
     result = []
@@ -81,7 +96,10 @@ async def list_csv_files(db: Session = Depends(get_db)):
 
 
 @router.get("/{csv_id}", response_model=CSVFileWithRowsResponse)
-async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
+async def get_csv_data(
+    csv_id: int, 
+    db: Session = Depends(get_db)
+) -> CSVFileWithRowsResponse:
     """Get CSV data with all rows"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
@@ -105,7 +123,10 @@ async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{csv_id}")
-async def delete_csv(csv_id: int, db: Session = Depends(get_db)):
+async def delete_csv(
+    csv_id: int, 
+    db: Session = Depends(get_db)
+) -> dict[str, str | int]:
     """Delete a CSV file and all its rows, evaluations, and prompts"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
@@ -120,7 +141,11 @@ async def delete_csv(csv_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{csv_id}/drop-columns", response_model=CSVFileResponse)
-async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = Depends(get_db)):
+async def drop_columns(
+    csv_id: int, 
+    request: DropColumnsRequest, 
+    db: Session = Depends(get_db)
+) -> CSVFileResponse:
     """Drop columns from a CSV dataset"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
@@ -146,16 +171,20 @@ async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = D
     csv_file.columns = json.dumps(new_columns)
     
     # Update all rows to remove the dropped columns
-    rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
-    for row in rows:
-        row_dict = parse_json_safe(row.row_data, {})
-        # Remove dropped columns from row data
-        for col in request.columns:
-            row_dict.pop(col, None)
-        row.row_data = json.dumps(row_dict)
-    
-    db.commit()
-    db.refresh(csv_file)
+    try:
+        rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
+        for row in rows:
+            row_dict = parse_json_safe(row.row_data, {})
+            # Remove dropped columns from row data
+            for col in request.columns:
+                row_dict.pop(col, None)
+            row.row_data = json.dumps(row_dict)
+        
+        db.commit()
+        db.refresh(csv_file)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating rows: {str(e)}")
     
     row_count = len(rows)
     return CSVFileResponse(
@@ -168,7 +197,11 @@ async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = D
 
 
 @router.post("/{csv_id}/rename-column", response_model=CSVFileResponse)
-async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session = Depends(get_db)):
+async def rename_column(
+    csv_id: int, 
+    request: RenameColumnRequest, 
+    db: Session = Depends(get_db)
+) -> CSVFileResponse:
     """Rename a column in a CSV dataset"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
@@ -200,16 +233,20 @@ async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session =
     csv_file.columns = json.dumps(new_columns)
     
     # Update all rows to rename the column key
-    rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
-    for row in rows:
-        row_dict = parse_json_safe(row.row_data, {})
-        # Rename the column key in row data
-        if request.old_name in row_dict:
-            row_dict[request.new_name] = row_dict.pop(request.old_name)
-        row.row_data = json.dumps(row_dict)
-    
-    db.commit()
-    db.refresh(csv_file)
+    try:
+        rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
+        for row in rows:
+            row_dict = parse_json_safe(row.row_data, {})
+            # Rename the column key in row data
+            if request.old_name in row_dict:
+                row_dict[request.new_name] = row_dict.pop(request.old_name)
+            row.row_data = json.dumps(row_dict)
+        
+        db.commit()
+        db.refresh(csv_file)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating rows: {str(e)}")
     
     row_count = len(rows)
     return CSVFileResponse(
@@ -226,7 +263,7 @@ async def export_csv_with_evaluations(
     csv_id: int, 
     prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
-):
+) -> StreamingResponse:
     """Export CSV file with all evaluation data (output, annotation, feedback) and prompt as a ZIP file"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     

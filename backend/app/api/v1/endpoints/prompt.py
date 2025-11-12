@@ -21,7 +21,7 @@ router = APIRouter()
 async def create_prompt(
     request: CreatePromptRequest,
     db: Session = Depends(get_db)
-):
+) -> PromptResponse:
     """Create a new prompt or a new version of an existing prompt"""
     # Verify CSV file exists if csv_file_id is provided
     if request.csv_file_id:
@@ -53,11 +53,14 @@ async def create_prompt(
             commit_message=request.commit_message
         )
     
-    db.add(prompt)
-    db.commit()
-    db.refresh(prompt)
-    
-    return prompt
+    try:
+        db.add(prompt)
+        db.commit()
+        db.refresh(prompt)
+        return prompt
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating prompt: {str(e)}")
 
 
 @router.get("/", response_model=List[PromptResponse])
@@ -65,7 +68,7 @@ async def list_prompts(
     csv_file_id: Optional[int] = None,
     include_versions: bool = False,
     db: Session = Depends(get_db)
-):
+) -> List[PromptResponse]:
     """List all prompts, optionally filtered by CSV file.
     If include_versions is False, only returns root prompts (those without a parent).
     If include_versions is True, returns all prompts including versions."""
@@ -83,7 +86,10 @@ async def list_prompts(
 
 
 @router.get("/{prompt_id}", response_model=PromptResponse)
-async def get_prompt(prompt_id: int, db: Session = Depends(get_db)):
+async def get_prompt(
+    prompt_id: int, 
+    db: Session = Depends(get_db)
+) -> PromptResponse:
     """Get a specific prompt by ID"""
     return get_or_404(db, Prompt, prompt_id, "Prompt not found")
 
@@ -93,7 +99,7 @@ async def update_prompt(
     prompt_id: int,
     request: UpdatePromptRequest,
     db: Session = Depends(get_db)
-):
+) -> PromptResponse:
     """Update a prompt"""
     prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
@@ -112,14 +118,20 @@ async def update_prompt(
     if request.commit_message is not None:
         prompt.commit_message = request.commit_message
     
-    db.commit()
-    db.refresh(prompt)
-    
-    return prompt
+    try:
+        db.commit()
+        db.refresh(prompt)
+        return prompt
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating prompt: {str(e)}")
 
 
 @router.get("/{prompt_id}/versions", response_model=List[PromptResponse])
-async def list_prompt_versions(prompt_id: int, db: Session = Depends(get_db)):
+async def list_prompt_versions(
+    prompt_id: int, 
+    db: Session = Depends(get_db)
+) -> List[PromptResponse]:
     """List all versions of a prompt"""
     get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
@@ -138,7 +150,7 @@ async def list_prompt_versions(prompt_id: int, db: Session = Depends(get_db)):
 async def list_prompts_grouped_by_name(
     csv_file_id: Optional[int] = None,
     db: Session = Depends(get_db)
-):
+) -> Dict[str, List[PromptResponse]]:
     """List all prompts grouped by name (list of lists structure)"""
     query = db.query(Prompt)
     
@@ -165,7 +177,7 @@ async def create_prompt_version(
     prompt_id: int,
     request: CreateVersionRequest,
     db: Session = Depends(get_db)
-):
+) -> PromptResponse:
     """Create a new version of an existing prompt"""
     parent_prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
@@ -182,15 +194,21 @@ async def create_prompt_version(
         commit_message=request.commit_message
     )
     
-    db.add(prompt)
-    db.commit()
-    db.refresh(prompt)
-    
-    return prompt
+    try:
+        db.add(prompt)
+        db.commit()
+        db.refresh(prompt)
+        return prompt
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating prompt version: {str(e)}")
 
 
 @router.delete("/{prompt_id}")
-async def delete_prompt(prompt_id: int, db: Session = Depends(get_db)):
+async def delete_prompt(
+    prompt_id: int, 
+    db: Session = Depends(get_db)
+) -> dict[str, str | int]:
     """Delete a prompt"""
     prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     db.delete(prompt)

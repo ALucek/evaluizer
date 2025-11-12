@@ -9,9 +9,6 @@ save eval reports
 
 styling
 
-add in azure, vertex and gemini providers
-add in the models 
-
 run individual evals once they're in there
 
 add in llm as a judge evals

@@ -1,12 +1,18 @@
+"""LLM service for interacting with LLM providers via LiteLLM"""
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from litellm import acompletion
 
 
 class LLMService:
     """Service for interacting with LLM providers via LiteLLM"""
     
-    def render_prompt(self, prompt_template: str, row_data: Dict[str, Any], available_columns: list = None) -> str:
+    def render_prompt(
+        self, 
+        prompt_template: str, 
+        row_data: Dict[str, Any], 
+        available_columns: Optional[List[str]] = None
+    ) -> str:
         """
         Render a prompt template by replacing {{variable}} placeholders with actual values.
         

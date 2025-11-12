@@ -28,7 +28,7 @@ class RunPromptRequest(BaseModel):
 async def run_prompt(
     request: RunPromptRequest,
     db: Session = Depends(get_db)
-):
+) -> EvaluationResponse:
     """
     Run a prompt through an LLM for a specific CSV row.
     Returns the complete response and saves it to the evaluation output.
