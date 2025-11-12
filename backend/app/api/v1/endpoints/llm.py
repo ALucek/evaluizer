@@ -21,6 +21,7 @@ class RunPromptRequest(BaseModel):
     model: str = "gpt-5-mini"
     temperature: float = 1.0
     max_tokens: int = 2000
+    prompt_content: Optional[str] = None  # Optional override for prompt content (for unsaved edits)
 
 
 @router.post("/run", response_model=EvaluationResponse)
@@ -32,10 +33,13 @@ async def run_prompt(
     Run a prompt through an LLM for a specific CSV row.
     Returns the complete response and saves it to the evaluation output.
     """
-    # Verify prompt exists
+    # Verify prompt exists (still needed for validation even if using prompt_content override)
     prompt = db.query(Prompt).filter(Prompt.id == request.prompt_id).first()
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
+    
+    # Use provided prompt_content if available, otherwise use saved prompt content
+    prompt_content = request.prompt_content if request.prompt_content is not None else prompt.content
     
     # Verify CSV row exists
     csv_row = db.query(CSVRow).filter(CSVRow.id == request.csv_row_id).first()
@@ -61,7 +65,7 @@ async def run_prompt(
     
     # Render the prompt template with row data and validate column names
     try:
-        rendered_prompt = llm_service.render_prompt(prompt.content, row_data, available_columns)
+        rendered_prompt = llm_service.render_prompt(prompt_content, row_data, available_columns)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     

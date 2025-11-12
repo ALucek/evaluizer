@@ -5,7 +5,7 @@ import csv
 import json
 import io
 import zipfile
-from typing import List
+from typing import List, Optional
 
 from app.database import get_db
 from app.models.csv_data import CSVFile, CSVRow
@@ -229,7 +229,11 @@ async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session =
 
 
 @router.get("/{csv_id}/export")
-async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)):
+async def export_csv_with_evaluations(
+    csv_id: int, 
+    prompt_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     """Export CSV file with all evaluation data (output, annotation, feedback) and prompt as a ZIP file"""
     csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
     if not csv_file:
@@ -242,8 +246,14 @@ async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)
     evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
     eval_map = {eval.csv_row_id: eval for eval in evaluations}
     
-    # Get prompt for this CSV file
-    prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
+    # Get prompt - use provided prompt_id if available, otherwise get first prompt for CSV file
+    if prompt_id:
+        prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+    else:
+        prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
+    
     prompt_content = prompt.content if prompt else ""
     
     # Get original columns

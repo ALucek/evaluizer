@@ -4,11 +4,12 @@ import { CSVData, exportCSV } from '../services/api';
 interface CSVFileListProps {
   files: CSVData[];
   selectedFileId: number | null;
+  currentPromptId: number | null | undefined;
   onSelectFile: (id: number) => void;
   onDeleteFile: (id: number) => void;
 }
 
-export default function CSVFileList({ files, selectedFileId, onSelectFile, onDeleteFile }: CSVFileListProps) {
+export default function CSVFileList({ files, selectedFileId, currentPromptId, onSelectFile, onDeleteFile }: CSVFileListProps) {
   const [openMenuFileId, setOpenMenuFileId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
@@ -61,7 +62,7 @@ export default function CSVFileList({ files, selectedFileId, onSelectFile, onDel
     setOpenMenuFileId(null);
     setMenuPosition(null);
     try {
-      await exportCSV(fileId, filename);
+      await exportCSV(fileId, filename, currentPromptId || undefined);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to export CSV file');
     }

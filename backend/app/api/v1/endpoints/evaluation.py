@@ -91,11 +91,17 @@ async def update_evaluation(
         db.add(evaluation)
     else:
         # Update existing evaluation
-        if request.output is not None:
+        # Check if fields were explicitly provided (even if None) using model_dump
+        # This allows us to set fields to None/null when explicitly provided
+        request_dict = request.model_dump(exclude_unset=True)
+        
+        if 'output' in request_dict:
             evaluation.output = request.output
-        if request.annotation is not None:
+        if 'annotation' in request_dict:
+            # Explicitly handle None/null values - if annotation is in request_dict, update it
+            # This allows setting annotation to None when toggling off
             evaluation.annotation = request.annotation
-        if request.feedback is not None:
+        if 'feedback' in request_dict:
             evaluation.feedback = request.feedback
     
     db.commit()

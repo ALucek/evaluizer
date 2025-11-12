@@ -2,7 +2,7 @@ import { useState, useEffect, startTransition } from 'react';
 import CSVUpload from './components/CSVUpload';
 import CSVFileList from './components/CSVFileList';
 import DataTable from './components/DataTable';
-import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt } from './services/api';
+import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName } from './services/api';
 import PromptEditor from './components/PromptEditor';
 import LLMConfigPanel, { LLMConfig } from './components/LLMConfigPanel';
 import './index.css';
@@ -12,7 +12,9 @@ function App() {
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
   const [csvData, setCsvData] = useState<CSVDataWithRows | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
+  const [currentPromptContent, setCurrentPromptContent] = useState<string>(''); // Track current edited content
   const [promptVersions, setPromptVersions] = useState<Prompt[]>([]);
+  const [groupedPrompts, setGroupedPrompts] = useState<Record<string, Prompt[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
@@ -88,14 +90,26 @@ function App() {
     }
   };
 
+  const loadGroupedPrompts = async (csvFileId: number) => {
+    try {
+      const grouped = await listPromptsGroupedByName(csvFileId);
+      setGroupedPrompts(grouped);
+    } catch (err) {
+      console.error('Failed to load grouped prompts:', err);
+      setGroupedPrompts({});
+    }
+  };
+
   useEffect(() => {
     if (selectedFileId) {
       loadCSVData(selectedFileId);
       loadPrompt(selectedFileId);
+      loadGroupedPrompts(selectedFileId);
     } else {
       setCsvData(null);
       setCurrentPrompt(null);
       setPromptVersions([]);
+      setGroupedPrompts({});
     }
   }, [selectedFileId]);
 
@@ -174,27 +188,31 @@ function App() {
     }
   };
 
-  const handleSavePrompt = async (prompt: string, createNewVersion: boolean, name?: string) => {
+  const handleSavePrompt = async (prompt: string, createNewVersion: boolean, name?: string, commitMessage?: string) => {
     if (!selectedFileId) return;
     try {
       setError(null);
-      if (currentPrompt) {
-        if (createNewVersion) {
-          // Create a new version
-          const newVersion = await createPromptVersion(currentPrompt.id, prompt, name);
-          setCurrentPrompt(newVersion);
-          await loadPromptVersions(newVersion.id);
-        } else {
-          // Update the current prompt (only metadata, not content - but we'll allow it for now)
-          const updated = await updatePromptAPI(currentPrompt.id, prompt, name);
-          setCurrentPrompt(updated);
-          await loadPromptVersions(updated.id);
-        }
-      } else {
-        // Create a new root prompt
+      
+      // If name is provided, we're creating a new prompt (new branch)
+      // Otherwise, if currentPrompt exists, we're creating a new version (commit)
+      if (name && name.trim()) {
+        // Create a new root prompt (new branch) - don't pass parent_prompt_id
         const created = await createPrompt(prompt, selectedFileId, name);
         setCurrentPrompt(created);
         await loadPromptVersions(created.id);
+        await loadGroupedPrompts(selectedFileId);
+      } else if (currentPrompt) {
+        // When a prompt exists, create a new version (commit)
+        const newVersion = await createPromptVersion(currentPrompt.id, prompt, undefined, commitMessage);
+        setCurrentPrompt(newVersion);
+        await loadPromptVersions(newVersion.id);
+        await loadGroupedPrompts(selectedFileId);
+      } else {
+        // Fallback: create a new prompt without a name (will be "Unnamed")
+        const created = await createPrompt(prompt, selectedFileId, name);
+        setCurrentPrompt(created);
+        await loadPromptVersions(created.id);
+        await loadGroupedPrompts(selectedFileId);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save prompt');
@@ -223,60 +241,81 @@ function App() {
     try {
       const selectedVersion = await getPrompt(versionId);
       setCurrentPrompt(selectedVersion);
+      // currentPromptContent will be synced by PromptEditor's onContentChange callback
+      // when the prompt prop changes and the textarea updates
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load prompt version');
     }
   };
 
+  const handleAutoSave = async (promptId: number, content: string) => {
+    try {
+      // Update the prompt content in the database without creating a new version
+      const updated = await updatePromptAPI(promptId, content);
+      // Update currentPrompt to reflect the saved content
+      if (currentPrompt?.id === promptId) {
+        setCurrentPrompt(updated);
+      }
+    } catch (err) {
+      console.error('Auto-save failed:', err);
+      // Don't throw - auto-save failures should be silent
+    }
+  };
+
   const handleDeletePrompt = async (promptId: number) => {
     if (!selectedFileId) return;
-    
-    // Confirm deletion
-    const promptToDelete = promptVersions.find(v => v.id === promptId);
-    const promptName = promptToDelete?.name || `Version ${promptToDelete?.version || ''}`;
-    
-    if (!window.confirm(`Are you sure you want to delete "${promptName}"? This action cannot be undone.`)) {
-      return;
-    }
 
     try {
       setError(null);
       const wasCurrentPrompt = currentPrompt?.id === promptId;
-      const rootPromptId = promptToDelete?.parent_prompt_id || promptToDelete?.id;
+      const currentPromptName = currentPrompt?.name || 'Unnamed';
       
       await deletePrompt(promptId);
       
-      // If we deleted the current prompt, select another version or clear it
+      // Reload grouped prompts to reflect the deletion
+      await loadGroupedPrompts(selectedFileId);
+      
+      // If we deleted the current prompt, try to select another version from the same prompt
       if (wasCurrentPrompt) {
-        const remainingVersions = promptVersions.filter(v => v.id !== promptId);
-        if (remainingVersions.length > 0) {
-          // Select the first remaining version
-          await handleVersionSelect(remainingVersions[0].id);
-          await loadPromptVersions(remainingVersions[0].id);
+        const updatedGrouped = await listPromptsGroupedByName(selectedFileId);
+        
+        // First, try to find other versions of the same prompt (same name)
+        const samePromptVersions = updatedGrouped[currentPromptName];
+        if (samePromptVersions && samePromptVersions.length > 0) {
+          // Select the latest version of the same prompt
+          await handleVersionSelect(samePromptVersions[samePromptVersions.length - 1].id);
+          return;
+        }
+        
+        // If no versions of the same prompt exist, try other prompts
+        const remainingPrompts = Object.values(updatedGrouped).flat();
+        if (remainingPrompts.length > 0) {
+          // Select the latest version of the first available prompt
+          const firstPromptName = Object.keys(updatedGrouped)[0];
+          const firstPromptVersions = updatedGrouped[firstPromptName];
+          if (firstPromptVersions && firstPromptVersions.length > 0) {
+            await handleVersionSelect(firstPromptVersions[firstPromptVersions.length - 1].id);
+          }
         } else {
-          // No versions left, clear the prompt
+          // No prompts left, clear the prompt
           setCurrentPrompt(null);
           setPromptVersions([]);
-        }
-      } else {
-        // Just reload versions to reflect the deletion - use root prompt ID
-        if (rootPromptId && rootPromptId !== promptId) {
-          await loadPromptVersions(rootPromptId);
-        } else if (currentPrompt) {
-          // Fallback to current prompt's root
-          const currentRootId = currentPrompt.parent_prompt_id || currentPrompt.id;
-          await loadPromptVersions(currentRootId);
         }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete prompt');
+      throw err;
     }
   };
 
   const handleRunPrompt = async (rowIds: number[], clearOutputsFirst: boolean = false) => {
-    if (!selectedFileId || !csvData || !currentPrompt?.content) {
+    if (!selectedFileId || !csvData || !currentPrompt) {
       return; // Validation prevents this, but guard anyway
     }
+    
+    // Use currentPromptContent which tracks the textarea value (source of truth)
+    // Falls back to saved prompt content if textarea hasn't been synced yet
+    const promptContentToUse = currentPromptContent || currentPrompt.content;
 
     const isAllRows = clearOutputsFirst && rowIds.length === csvData.rows.length;
     setIsRunning(true);
@@ -321,6 +360,7 @@ function App() {
               model: llmConfig.model,
               temperature: llmConfig.temperature,
               maxTokens: llmConfig.maxTokens,
+              promptContent: promptContentToUse, // Pass current edited content
             });
             
             // Use startTransition to mark this as a non-urgent update, preventing flickering
@@ -413,12 +453,13 @@ function App() {
             <>
               <PromptEditor
                 prompt={currentPrompt}
-                versions={promptVersions}
+                groupedPrompts={groupedPrompts}
                 columns={currentColumns}
                 onSave={handleSavePrompt}
                 onVersionSelect={handleVersionSelect}
-                onVersionNameUpdate={handleVersionNameUpdate}
-                onVersionDelete={handleDeletePrompt}
+                onDeletePrompt={handleDeletePrompt}
+                onContentChange={setCurrentPromptContent}
+                onAutoSave={handleAutoSave}
               />
               <LLMConfigPanel
                 config={llmConfig}
@@ -443,6 +484,7 @@ function App() {
           <CSVFileList
             files={csvFiles}
             selectedFileId={selectedFileId}
+            currentPromptId={currentPrompt?.id}
             onSelectFile={setSelectedFileId}
             onDeleteFile={handleDeleteFile}
           />

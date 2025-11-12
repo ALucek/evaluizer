@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
+from typing import List, Optional, Dict
+from collections import defaultdict
 
 from app.database import get_db
 from app.models.prompt import Prompt
@@ -63,7 +64,8 @@ async def create_prompt(
             content=request.content,
             csv_file_id=request.csv_file_id or parent_prompt.csv_file_id,
             parent_prompt_id=root_prompt_id,
-            version=version
+            version=version,
+            commit_message=request.commit_message
         )
     else:
         # Create a new root prompt (version 1)
@@ -71,7 +73,8 @@ async def create_prompt(
             name=request.name,
             content=request.content,
             csv_file_id=request.csv_file_id,
-            version=1
+            version=1,
+            commit_message=request.commit_message
         )
     
     db.add(prompt)
@@ -138,6 +141,9 @@ async def update_prompt(
     if request.content is not None:
         prompt.content = request.content
     
+    if request.commit_message is not None:
+        prompt.commit_message = request.commit_message
+    
     db.commit()
     db.refresh(prompt)
     
@@ -160,6 +166,32 @@ async def list_prompt_versions(prompt_id: int, db: Session = Depends(get_db)):
     ).order_by(Prompt.version.asc()).all()
     
     return versions
+
+
+@router.get("/grouped/by-name", response_model=Dict[str, List[PromptResponse]])
+async def list_prompts_grouped_by_name(
+    csv_file_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """List all prompts grouped by name (list of lists structure)"""
+    query = db.query(Prompt)
+    
+    if csv_file_id:
+        query = query.filter(Prompt.csv_file_id == csv_file_id)
+    
+    prompts = query.order_by(Prompt.created_at.desc()).all()
+    
+    # Group by name (use "Unnamed" for null names)
+    grouped: Dict[str, List[PromptResponse]] = defaultdict(list)
+    for prompt in prompts:
+        name = prompt.name or "Unnamed"
+        grouped[name].append(prompt)
+    
+    # Sort versions within each group by version number
+    for name in grouped:
+        grouped[name].sort(key=lambda p: p.version)
+    
+    return dict(grouped)
 
 
 @router.post("/{prompt_id}/versions", response_model=PromptResponse)
@@ -188,7 +220,8 @@ async def create_prompt_version(
         content=request.content,
         csv_file_id=parent_prompt.csv_file_id,
         parent_prompt_id=root_prompt_id,
-        version=version
+        version=version,
+        commit_message=request.commit_message
     )
     
     db.add(prompt)

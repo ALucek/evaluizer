@@ -441,13 +441,42 @@ export default function DataTable({
     if (!output) {
       return;
     }
-    const newValue = localRowData[rowId]?.annotation === value ? null : value;
     
-    // Optimistic update
-    setLocalRowData(prev => ({
-      ...prev,
-      [rowId]: { ...prev[rowId], annotation: newValue }
-    }));
+    // Calculate new value using functional update to read absolute latest state
+    // This ensures we're reading the most current state, not a stale closure value
+    let newValue: number | null = null;
+    setLocalRowData(prev => {
+      // Get the current annotation value from the latest state
+      // Explicitly handle 0 as a valid value (not falsy) - check if property exists
+      let currentAnnotation: number | null | undefined;
+      if (prev[rowId] !== undefined && 'annotation' in prev[rowId]) {
+        // localRowData has the annotation property - use it (could be 0, 1, or null)
+        currentAnnotation = prev[rowId].annotation;
+      } else {
+        // Fall back to evaluations
+        currentAnnotation = evaluations[rowId]?.annotation ?? null;
+      }
+      
+      // Normalize: preserve null, handle undefined, ensure 0 and 1 are treated as numbers
+      const currentAnnotationNum = (currentAnnotation === null || currentAnnotation === undefined) 
+        ? null 
+        : (typeof currentAnnotation === 'number' ? currentAnnotation : Number(currentAnnotation));
+      
+      // Toggle: if clicking the same button that's already active, remove annotation (set to null)
+      // Use strict equality to ensure 0 === 0 works correctly
+      newValue = (currentAnnotationNum !== null && currentAnnotationNum === value) ? null : value;
+      
+      // Optimistic update - ensure we create a new object reference
+      const currentRowData = prev[rowId] || {};
+      return {
+        ...prev,
+        [rowId]: {
+          ...currentRowData,
+          // Explicitly set to null (not undefined) when toggling off, or the number value (0 or 1)
+          annotation: newValue,
+        }
+      };
+    });
     
     // Update DB and sync back
     if (onUpdateRow) {
@@ -460,27 +489,38 @@ export default function DataTable({
             ...prev,
             [rowId]: updatedEval,
           }));
-          setLocalRowData(prev => ({
-            ...prev,
-            [rowId]: {
-              ...prev[rowId],
-              annotation: updatedEval.annotation ?? null,
-              feedback: updatedEval.feedback ?? "",
-              output: updatedEval.output ?? "",
-            },
-          }));
+          // Preserve the optimistic update - keep newValue we just set
+          // The DB response should match, but we keep our optimistic update to ensure UI stays responsive
+          // Explicitly preserve null values (not undefined) when toggling off
+          setLocalRowData(prev => {
+            const currentRowData = prev[rowId] || {};
+            return {
+              ...prev,
+              [rowId]: {
+                ...currentRowData,
+                // Keep the newValue we optimistically set - explicitly preserve null when toggling off
+                // newValue is either null (toggle off) or a number (toggle on), so use it directly
+                annotation: newValue,
+                feedback: updatedEval.feedback ?? currentRowData.feedback ?? "",
+                output: updatedEval.output ?? currentRowData.output ?? "",
+              },
+            };
+          });
         }
       } catch (err) {
         console.error('Error updating annotation:', err);
         // Revert optimistic update on error
         const originalEval = evaluations[rowId];
-        setLocalRowData(prev => ({
-          ...prev,
-          [rowId]: {
-            ...prev[rowId],
-            annotation: originalEval?.annotation ?? null,
-          },
-        }));
+        setLocalRowData(prev => {
+          const currentRowData = prev[rowId] || {};
+          return {
+            ...prev,
+            [rowId]: {
+              ...currentRowData,
+              annotation: originalEval?.annotation ?? null,
+            },
+          };
+        });
       }
     }
   };
@@ -803,42 +843,68 @@ export default function DataTable({
     }
     
     if (column === "Annotation") {
-      const annotation = evaluations[rowId]?.annotation ?? localRowData[rowId]?.annotation;
+      // Check localRowData first since it has the most recent optimistic updates
+      // Explicitly handle 0 as a valid value (not falsy) - check if property exists
+      let annotationRaw: number | null | undefined;
+      if (localRowData[rowId] !== undefined && 'annotation' in localRowData[rowId]) {
+        // localRowData[rowId] exists and has annotation property - use it directly
+        // This ensures optimistic updates are immediately reflected
+        // annotation can be 0, 1, or null - all are valid
+        annotationRaw = localRowData[rowId].annotation;
+      } else {
+        // localRowData[rowId] doesn't exist or doesn't have annotation - use evaluations
+        annotationRaw = evaluations[rowId]?.annotation;
+      }
+      // Normalize: preserve null explicitly, convert undefined to null, ensure 0 and 1 are treated as numbers
+      const annotation = (annotationRaw === null || annotationRaw === undefined) 
+        ? null 
+        : (typeof annotationRaw === 'number' ? annotationRaw : Number(annotationRaw));
       const evalOutput = evaluations[rowId]?.output;
       const localOutput = localRowData[rowId]?.output;
       const output = evalOutput !== undefined ? evalOutput : (localOutput !== undefined ? localOutput : "");
       const isDisabled = !output;
+      // Create style objects to ensure React detects changes
+      const thumbsUpStyle: React.CSSProperties = {
+        padding: '0.25rem 0.5rem',
+        backgroundColor: annotation === 1 ? '#28a745' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
+        color: annotation === 1 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        fontSize: '1rem',
+        opacity: isDisabled ? 0.6 : 1,
+      };
+      
+      const thumbsDownStyle: React.CSSProperties = {
+        padding: '0.25rem 0.5rem',
+        backgroundColor: annotation === 0 ? '#dc3545' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
+        color: annotation === 0 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        fontSize: '1rem',
+        opacity: isDisabled ? 0.6 : 1,
+      };
+      
+      // Use explicit key that changes when annotation changes (including null)
+      // This ensures React properly re-renders when annotation toggles between null and a value
+      const annotationKey = annotation === null ? 'none' : String(annotation);
+      
       return (
         <div className="annotation-buttons" style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
           <button
+            key={`thumb-up-${rowId}-${annotationKey}`}
             onClick={(e) => handleAnnotationClick(rowId, 1, e)}
             disabled={isDisabled}
-            style={{
-              padding: '0.25rem 0.5rem',
-              backgroundColor: annotation === 1 ? '#28a745' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
-              color: annotation === 1 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: isDisabled ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              opacity: isDisabled ? 0.6 : 1,
-            }}
+            style={thumbsUpStyle}
           >
             👍
           </button>
           <button
+            key={`thumb-down-${rowId}-${annotationKey}`}
             onClick={(e) => handleAnnotationClick(rowId, 0, e)}
             disabled={isDisabled}
-            style={{
-              padding: '0.25rem 0.5rem',
-              backgroundColor: annotation === 0 ? '#dc3545' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
-              color: annotation === 0 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: isDisabled ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              opacity: isDisabled ? 0.6 : 1,
-            }}
+            style={thumbsDownStyle}
           >
             👎
           </button>

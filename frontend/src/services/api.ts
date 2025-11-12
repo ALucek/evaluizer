@@ -42,6 +42,7 @@ export interface Prompt {
   content: string;
   csv_file_id: number | null;
   version: number;
+  commit_message: string | null;
   parent_prompt_id: number | null;
   created_at: string;
   updated_at: string;
@@ -129,9 +130,12 @@ export async function deleteCSV(csvId: number): Promise<void> {
   }
 }
 
-export async function exportCSV(csvId: number, filename: string): Promise<void> {
+export async function exportCSV(csvId: number, filename: string, promptId?: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/csv/${csvId}/export`);
+    const apiUrl = promptId 
+      ? `${API_BASE_URL}/csv/${csvId}/export?prompt_id=${promptId}`
+      : `${API_BASE_URL}/csv/${csvId}/export`;
+    const response = await fetch(apiUrl);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -352,10 +356,32 @@ export async function listPromptVersions(promptId: number): Promise<Prompt[]> {
   }
 }
 
+export async function listPromptsGroupedByName(csvFileId?: number): Promise<Record<string, Prompt[]>> {
+  try {
+    const url = csvFileId 
+      ? `${API_BASE_URL}/prompt/grouped/by-name?csv_file_id=${csvFileId}`
+      : `${API_BASE_URL}/prompt/grouped/by-name`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch grouped prompts: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
 export async function createPromptVersion(
   promptId: number,
   content: string,
-  name?: string
+  name?: string,
+  commitMessage?: string
 ): Promise<Prompt> {
   try {
     const response = await fetch(`${API_BASE_URL}/prompt/${promptId}/versions`, {
@@ -366,6 +392,7 @@ export async function createPromptVersion(
       body: JSON.stringify({
         content,
         name: name || null,
+        commit_message: commitMessage || null,
       }),
     });
     
@@ -412,7 +439,8 @@ export async function createPrompt(
   content: string,
   csvFileId?: number,
   name?: string,
-  parentPromptId?: number
+  parentPromptId?: number,
+  commitMessage?: string
 ): Promise<Prompt> {
   try {
     const response = await fetch(`${API_BASE_URL}/prompt/`, {
@@ -425,6 +453,7 @@ export async function createPrompt(
         csv_file_id: csvFileId || null,
         name: name || null,
         parent_prompt_id: parentPromptId || null,
+        commit_message: commitMessage || null,
       }),
     });
     
@@ -453,10 +482,11 @@ export async function updatePrompt(
   promptId: number,
   content?: string,
   name?: string,
-  csvFileId?: number | null
+  csvFileId?: number | null,
+  commitMessage?: string
 ): Promise<Prompt> {
   try {
-    const body: { content?: string; name?: string; csv_file_id?: number | null } = {};
+    const body: { content?: string; name?: string; csv_file_id?: number | null; commit_message?: string } = {};
     if (content !== undefined) {
       body.content = content;
     }
@@ -465,6 +495,9 @@ export async function updatePrompt(
     }
     if (csvFileId !== undefined) {
       body.csv_file_id = csvFileId;
+    }
+    if (commitMessage !== undefined) {
+      body.commit_message = commitMessage;
     }
 
     const response = await fetch(`${API_BASE_URL}/prompt/${promptId}`, {
@@ -544,22 +577,30 @@ export interface RunPromptConfig {
   model: string;
   temperature: number;
   maxTokens: number;
+  promptContent?: string;  // Optional override for prompt content (for unsaved edits)
 }
 
 export async function runPrompt(config: RunPromptConfig): Promise<Evaluation> {
   try {
+    const body: any = {
+      prompt_id: config.promptId,
+      csv_row_id: config.csvRowId,
+      model: config.model,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+    };
+    
+    // Include prompt_content if provided (for unsaved edits)
+    if (config.promptContent !== undefined) {
+      body.prompt_content = config.promptContent;
+    }
+    
     const response = await fetch(`${API_BASE_URL}/llm/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt_id: config.promptId,
-        csv_row_id: config.csvRowId,
-        model: config.model,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
