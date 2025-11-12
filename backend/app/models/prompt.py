@@ -1,4 +1,3 @@
-"""Prompt model"""
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
