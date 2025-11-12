@@ -15,3 +15,5 @@ add in llm as a judge evals
 add in function evals (exact match, cosine similarity, other reward functions)
 
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+tech debt in frontend
