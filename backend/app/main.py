@@ -1,7 +1,8 @@
 # FastAPI application entry point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import api_router
+from app.api.v1 import api_router
+from app.config import API_V1_PREFIX
 from app.database import engine, Base
 
 # Import all models to ensure they're registered with SQLAlchemy
@@ -21,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+app.include_router(api_router, prefix=API_V1_PREFIX)
 
 
 @app.get("/")

@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.csv_data import CSVFile, CSVRow
 from app.models.evaluation import Evaluation
 from app.models.prompt import Prompt
+from app.utils import parse_json_safe, get_or_404
 from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
 router = APIRouter()
@@ -57,7 +58,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         id=csv_file.id,
         filename=csv_file.filename,
         uploaded_at=csv_file.uploaded_at,
-        columns=json.loads(csv_file.columns),
+        columns=parse_json_safe(csv_file.columns, []),
         row_count=len(rows)
     )
 
@@ -73,7 +74,7 @@ async def list_csv_files(db: Session = Depends(get_db)):
             id=csv_file.id,
             filename=csv_file.filename,
             uploaded_at=csv_file.uploaded_at,
-            columns=json.loads(csv_file.columns),
+            columns=parse_json_safe(csv_file.columns, []),
             row_count=row_count
         ))
     return result
@@ -82,9 +83,7 @@ async def list_csv_files(db: Session = Depends(get_db)):
 @router.get("/{csv_id}", response_model=CSVFileWithRowsResponse)
 async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
     """Get CSV data with all rows"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
     
@@ -92,13 +91,13 @@ async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
         id=csv_file.id,
         filename=csv_file.filename,
         uploaded_at=csv_file.uploaded_at,
-        columns=json.loads(csv_file.columns),
+        columns=parse_json_safe(csv_file.columns, []),
         row_count=len(rows),
         rows=[
             CSVRowResponse(
                 id=row.id,
                 csv_file_id=row.csv_file_id,
-                row_data=json.loads(row.row_data)
+                row_data=parse_json_safe(row.row_data, {})
             )
             for row in rows
         ]
@@ -108,9 +107,7 @@ async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
 @router.delete("/{csv_id}")
 async def delete_csv(csv_id: int, db: Session = Depends(get_db)):
     """Delete a CSV file and all its rows, evaluations, and prompts"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     # Delete prompts associated with this CSV file
     db.query(Prompt).filter(Prompt.csv_file_id == csv_id).delete()
@@ -125,11 +122,9 @@ async def delete_csv(csv_id: int, db: Session = Depends(get_db)):
 @router.post("/{csv_id}/drop-columns", response_model=CSVFileResponse)
 async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = Depends(get_db)):
     """Drop columns from a CSV dataset"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
-    current_columns = json.loads(csv_file.columns)
+    current_columns = parse_json_safe(csv_file.columns, [])
     
     # Validate that columns to drop exist
     invalid_columns = [col for col in request.columns if col not in current_columns]
@@ -153,7 +148,7 @@ async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = D
     # Update all rows to remove the dropped columns
     rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
     for row in rows:
-        row_dict = json.loads(row.row_data)
+        row_dict = parse_json_safe(row.row_data, {})
         # Remove dropped columns from row data
         for col in request.columns:
             row_dict.pop(col, None)
@@ -175,11 +170,9 @@ async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = D
 @router.post("/{csv_id}/rename-column", response_model=CSVFileResponse)
 async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session = Depends(get_db)):
     """Rename a column in a CSV dataset"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
-    current_columns = json.loads(csv_file.columns)
+    current_columns = parse_json_safe(csv_file.columns, [])
     
     # Validate that the column to rename exists
     if request.old_name not in current_columns:
@@ -209,7 +202,7 @@ async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session =
     # Update all rows to rename the column key
     rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
     for row in rows:
-        row_dict = json.loads(row.row_data)
+        row_dict = parse_json_safe(row.row_data, {})
         # Rename the column key in row data
         if request.old_name in row_dict:
             row_dict[request.new_name] = row_dict.pop(request.old_name)
@@ -235,9 +228,7 @@ async def export_csv_with_evaluations(
     db: Session = Depends(get_db)
 ):
     """Export CSV file with all evaluation data (output, annotation, feedback) and prompt as a ZIP file"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     # Get all rows
     rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).order_by(CSVRow.id).all()
@@ -248,16 +239,14 @@ async def export_csv_with_evaluations(
     
     # Get prompt - use provided prompt_id if available, otherwise get first prompt for CSV file
     if prompt_id:
-        prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-        if not prompt:
-            raise HTTPException(status_code=404, detail="Prompt not found")
+        prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     else:
         prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
     
     prompt_content = prompt.content if prompt else ""
     
     # Get original columns
-    original_columns = json.loads(csv_file.columns)
+    original_columns = parse_json_safe(csv_file.columns, [])
     
     # Create CSV with original columns + evaluation columns
     csv_output = io.StringIO()
@@ -267,7 +256,7 @@ async def export_csv_with_evaluations(
     
     # Write each row with its evaluation data
     for row in rows:
-        row_dict = json.loads(row.row_data)
+        row_dict = parse_json_safe(row.row_data, {})
         evaluation = eval_map.get(row.id)
         
         # Add evaluation columns

@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from pydantic import BaseModel
-import json
 
 from app.database import get_db
 from app.models.prompt import Prompt
 from app.models.csv_data import CSVRow, CSVFile
 from app.models.evaluation import Evaluation
 from app.services.llm_service import llm_service
+from app.utils import parse_json_safe, get_or_404
 from app.schemas.evaluation import EvaluationResponse
 
 
@@ -34,34 +34,24 @@ async def run_prompt(
     Returns the complete response and saves it to the evaluation output.
     """
     # Verify prompt exists (still needed for validation even if using prompt_content override)
-    prompt = db.query(Prompt).filter(Prompt.id == request.prompt_id).first()
-    if not prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
+    prompt = get_or_404(db, Prompt, request.prompt_id, "Prompt not found")
     
     # Use provided prompt_content if available, otherwise use saved prompt content
     prompt_content = request.prompt_content if request.prompt_content is not None else prompt.content
     
     # Verify CSV row exists
-    csv_row = db.query(CSVRow).filter(CSVRow.id == request.csv_row_id).first()
-    if not csv_row:
-        raise HTTPException(status_code=404, detail="CSV row not found")
+    csv_row = get_or_404(db, CSVRow, request.csv_row_id, "CSV row not found")
     
     # Get CSV file to access column names for validation
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_row.csv_file_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    csv_file = get_or_404(db, CSVFile, csv_row.csv_file_id, "CSV file not found")
     
     # Parse row data
-    try:
-        row_data = json.loads(csv_row.row_data)
-    except json.JSONDecodeError:
+    row_data = parse_json_safe(csv_row.row_data, {})
+    if not row_data:
         raise HTTPException(status_code=400, detail="Invalid row data format")
     
     # Parse CSV file columns
-    try:
-        available_columns = json.loads(csv_file.columns) if isinstance(csv_file.columns, str) else csv_file.columns
-    except (json.JSONDecodeError, TypeError):
-        available_columns = None
+    available_columns = parse_json_safe(csv_file.columns, None)
     
     # Render the prompt template with row data and validate column names
     try:

@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.evaluation import Evaluation
 from app.models.csv_data import CSVFile, CSVRow
+from app.utils import get_or_404
 from app.schemas.evaluation import (
     EvaluationResponse,
     UpdateEvaluationRequest,
@@ -21,9 +22,7 @@ async def create_evaluation(
 ):
     """Create a new evaluation for a CSV row"""
     # Verify CSV row exists
-    csv_row = db.query(CSVRow).filter(CSVRow.id == request.csv_row_id).first()
-    if not csv_row:
-        raise HTTPException(status_code=404, detail="CSV row not found")
+    csv_row = get_or_404(db, CSVRow, request.csv_row_id, "CSV row not found")
     
     # Check if evaluation already exists
     existing = db.query(Evaluation).filter(Evaluation.csv_row_id == request.csv_row_id).first()
@@ -48,9 +47,7 @@ async def create_evaluation(
 @router.get("/csv/{csv_id}", response_model=List[EvaluationResponse])
 async def get_evaluations_for_csv(csv_id: int, db: Session = Depends(get_db)):
     """Get all evaluations for a CSV file"""
-    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
-    if not csv_file:
-        raise HTTPException(status_code=404, detail="CSV file not found")
+    get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
     return evaluations
@@ -72,14 +69,12 @@ async def update_evaluation(
     request: UpdateEvaluationRequest,
     db: Session = Depends(get_db)
 ):
-    """Update evaluation for a specific CSV row"""
+    """Update evaluation for a specific CSV row (creates if doesn't exist)"""
     evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
     
     if not evaluation:
         # Create evaluation if it doesn't exist
-        csv_row = db.query(CSVRow).filter(CSVRow.id == row_id).first()
-        if not csv_row:
-            raise HTTPException(status_code=404, detail="CSV row not found")
+        csv_row = get_or_404(db, CSVRow, row_id, "CSV row not found")
         
         evaluation = Evaluation(
             csv_file_id=csv_row.csv_file_id,
@@ -90,19 +85,11 @@ async def update_evaluation(
         )
         db.add(evaluation)
     else:
-        # Update existing evaluation
-        # Check if fields were explicitly provided (even if None) using model_dump
-        # This allows us to set fields to None/null when explicitly provided
+        # Update existing evaluation - only update fields that were explicitly provided
         request_dict = request.model_dump(exclude_unset=True)
-        
-        if 'output' in request_dict:
-            evaluation.output = request.output
-        if 'annotation' in request_dict:
-            # Explicitly handle None/null values - if annotation is in request_dict, update it
-            # This allows setting annotation to None when toggling off
-            evaluation.annotation = request.annotation
-        if 'feedback' in request_dict:
-            evaluation.feedback = request.feedback
+        for field in ['output', 'annotation', 'feedback']:
+            if field in request_dict:
+                setattr(evaluation, field, request_dict[field])
     
     db.commit()
     db.refresh(evaluation)

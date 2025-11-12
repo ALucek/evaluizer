@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import List, Optional, Dict
 from collections import defaultdict
 
 from app.database import get_db
 from app.models.prompt import Prompt
 from app.models.csv_data import CSVFile
+from app.utils import get_root_prompt_id, get_next_prompt_version, get_or_404
 from app.schemas.prompt import (
     PromptResponse,
     CreatePromptRequest,
@@ -17,20 +17,6 @@ from app.schemas.prompt import (
 router = APIRouter()
 
 
-def get_root_prompt_id(db: Session, prompt_id: int) -> int:
-    """Helper function to find the root prompt ID"""
-    prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not prompt:
-        return prompt_id
-    
-    current_id = prompt_id
-    while prompt and prompt.parent_prompt_id:
-        current_id = prompt.parent_prompt_id
-        prompt = db.query(Prompt).filter(Prompt.id == current_id).first()
-    
-    return current_id
-
-
 @router.post("/", response_model=PromptResponse)
 async def create_prompt(
     request: CreatePromptRequest,
@@ -39,25 +25,15 @@ async def create_prompt(
     """Create a new prompt or a new version of an existing prompt"""
     # Verify CSV file exists if csv_file_id is provided
     if request.csv_file_id:
-        csv_file = db.query(CSVFile).filter(CSVFile.id == request.csv_file_id).first()
-        if not csv_file:
-            raise HTTPException(status_code=404, detail="CSV file not found")
+        get_or_404(db, CSVFile, request.csv_file_id, "CSV file not found")
     
     # If parent_prompt_id is provided, create a new version
     if request.parent_prompt_id:
-        parent_prompt = db.query(Prompt).filter(Prompt.id == request.parent_prompt_id).first()
-        if not parent_prompt:
-            raise HTTPException(status_code=404, detail="Parent prompt not found")
+        parent_prompt = get_or_404(db, Prompt, request.parent_prompt_id, "Parent prompt not found")
         
-        # Find the root prompt ID
+        # Find the root prompt ID and get next version
         root_prompt_id = get_root_prompt_id(db, request.parent_prompt_id)
-        
-        # Get the next version number (check all versions of the root prompt)
-        max_version = db.query(func.max(Prompt.version)).filter(
-            (Prompt.parent_prompt_id == root_prompt_id) | (Prompt.id == root_prompt_id)
-        ).scalar() or 0
-        
-        version = max_version + 1
+        version = get_next_prompt_version(db, root_prompt_id)
         
         prompt = Prompt(
             name=request.name or parent_prompt.name,
@@ -109,11 +85,7 @@ async def list_prompts(
 @router.get("/{prompt_id}", response_model=PromptResponse)
 async def get_prompt(prompt_id: int, db: Session = Depends(get_db)):
     """Get a specific prompt by ID"""
-    prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
-    
-    return prompt
+    return get_or_404(db, Prompt, prompt_id, "Prompt not found")
 
 
 @router.put("/{prompt_id}", response_model=PromptResponse)
@@ -123,16 +95,12 @@ async def update_prompt(
     db: Session = Depends(get_db)
 ):
     """Update a prompt"""
-    prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
+    prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
     # Verify CSV file exists if csv_file_id is provided
     if request.csv_file_id is not None:
         if request.csv_file_id:
-            csv_file = db.query(CSVFile).filter(CSVFile.id == request.csv_file_id).first()
-            if not csv_file:
-                raise HTTPException(status_code=404, detail="CSV file not found")
+            get_or_404(db, CSVFile, request.csv_file_id, "CSV file not found")
         prompt.csv_file_id = request.csv_file_id
     
     if request.name is not None:
@@ -153,9 +121,7 @@ async def update_prompt(
 @router.get("/{prompt_id}/versions", response_model=List[PromptResponse])
 async def list_prompt_versions(prompt_id: int, db: Session = Depends(get_db)):
     """List all versions of a prompt"""
-    prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
+    get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
     # Get the root prompt ID
     root_prompt_id = get_root_prompt_id(db, prompt_id)
@@ -201,19 +167,11 @@ async def create_prompt_version(
     db: Session = Depends(get_db)
 ):
     """Create a new version of an existing prompt"""
-    parent_prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not parent_prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
+    parent_prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     
-    # Get the root prompt ID
+    # Get the root prompt ID and next version
     root_prompt_id = get_root_prompt_id(db, prompt_id)
-    
-    # Get the next version number
-    max_version = db.query(func.max(Prompt.version)).filter(
-        (Prompt.parent_prompt_id == root_prompt_id) | (Prompt.id == root_prompt_id)
-    ).scalar() or 0
-    
-    version = max_version + 1
+    version = get_next_prompt_version(db, root_prompt_id)
     
     prompt = Prompt(
         name=request.name or parent_prompt.name,
@@ -234,10 +192,7 @@ async def create_prompt_version(
 @router.delete("/{prompt_id}")
 async def delete_prompt(prompt_id: int, db: Session = Depends(get_db)):
     """Delete a prompt"""
-    prompt = db.query(Prompt).filter(Prompt.id == prompt_id).first()
-    if not prompt:
-        raise HTTPException(status_code=404, detail="Prompt not found")
-    
+    prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
     db.delete(prompt)
     db.commit()
     
