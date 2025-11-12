@@ -115,29 +115,44 @@ export default function LLMConfigPanel({
   };
 
   return (
-    <div style={{
-      padding: '1.5rem',
-      border: '1px solid #ddd',
-      borderRadius: '8px',
-      backgroundColor: '#fafafa',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '1rem',
-    }}>
+    <>
+      <style>{`
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type="number"] {
+          -moz-appearance: textfield;
+        }
+      `}</style>
+      <div style={{
+        padding: '1.5rem',
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        backgroundColor: '#ffffff',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.5rem',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+      }}>
       <div>
-        <h2 style={{ marginTop: 0, marginBottom: '0.5rem' }}>LLM Configuration</h2>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
+        <h2 style={{ marginTop: 0, marginBottom: '0.25rem', fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>
+          LLM Configuration
+        </h2>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6b7280' }}>
           Configure the model and parameters for running prompts
         </p>
       </div>
 
+      {/* Model Selection */}
       <div>
         <label style={{
           display: 'block',
-          fontSize: '0.85rem',
-          fontWeight: 'bold',
+          fontSize: '0.875rem',
+          fontWeight: '500',
           marginBottom: '0.5rem',
-          color: '#666',
+          color: '#374151',
         }}>
           Model
         </label>
@@ -162,12 +177,13 @@ export default function LLMConfigPanel({
           disabled={isRunning || modelsLoading}
           style={{
             width: '100%',
-            padding: '0.5rem',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '0.9rem',
-            backgroundColor: (isRunning || modelsLoading) ? '#f5f5f5' : 'white',
+            padding: '0.625rem 0.75rem',
+            border: '1px solid #d1d5db',
+            borderRadius: '8px',
+            fontSize: '0.875rem',
+            backgroundColor: (isRunning || modelsLoading) ? '#f9fafb' : 'white',
             cursor: (isRunning || modelsLoading) ? 'not-allowed' : 'pointer',
+            color: '#111827',
           }}
         >
           {modelsLoading ? (
@@ -184,88 +200,192 @@ export default function LLMConfigPanel({
         </select>
         {modelsError && (
           <p style={{
-            margin: '0.25rem 0 0 0',
+            margin: '0.5rem 0 0 0',
             fontSize: '0.75rem',
-            color: '#c33',
-            fontStyle: 'italic',
+            color: '#dc2626',
           }}>
             ⚠️ {modelsError}
           </p>
         )}
       </div>
 
+      {/* Temperature */}
       <div>
-        <label style={{
-          display: 'block',
-          fontSize: '0.85rem',
-          fontWeight: 'bold',
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           marginBottom: '0.5rem',
-          color: '#666',
         }}>
-          Temperature: {localConfig.temperature.toFixed(1)}
-        </label>
+          <label style={{
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            color: '#374151',
+          }}>
+            Temperature
+          </label>
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.1"
+            value={localConfig.temperature}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val) && val >= 0 && val <= 1) {
+                handleTemperatureChange(val);
+              }
+            }}
+            disabled={isRunning}
+            style={{
+              width: '90px',
+              padding: '0.375rem 0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              backgroundColor: isRunning ? '#f9fafb' : 'white',
+              textAlign: 'center',
+              color: '#111827',
+            }}
+          />
+        </div>
         <input
           type="range"
           min="0"
-          max="2"
+          max="1"
           step="0.1"
           value={localConfig.temperature}
           onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
           disabled={isRunning}
           style={{
             width: '100%',
+            height: '6px',
+            borderRadius: '3px',
+            background: '#e5e7eb',
+            outline: 'none',
+            cursor: isRunning ? 'not-allowed' : 'pointer',
           }}
         />
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           fontSize: '0.75rem',
-          color: '#999',
-          marginTop: '0.25rem',
+          color: '#9ca3af',
+          marginTop: '0.375rem',
         }}>
           <span>More focused</span>
           <span>More creative</span>
         </div>
       </div>
 
+      {/* Max Tokens */}
       <div>
-        <label style={{
-          display: 'block',
-          fontSize: '0.85rem',
-          fontWeight: 'bold',
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           marginBottom: '0.5rem',
-          color: '#666',
         }}>
-          Max Tokens
-        </label>
+          <label style={{
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            color: '#374151',
+          }}>
+            Max Tokens
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="16384"
+            value={localConfig.maxTokens}
+            onChange={(e) => {
+              const val = parseInt(e.target.value);
+              if (!isNaN(val) && val >= 1 && val <= 16384) {
+                handleMaxTokensChange(val);
+              }
+            }}
+            disabled={isRunning}
+            style={{
+              width: '90px',
+              padding: '0.375rem 0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              backgroundColor: isRunning ? '#f9fafb' : 'white',
+              textAlign: 'center',
+              color: '#111827',
+            }}
+          />
+        </div>
         <input
-          type="number"
+          type="range"
           min="1"
-          max="8000"
+          max="16384"
+          step="1"
           value={localConfig.maxTokens}
-          onChange={(e) => handleMaxTokensChange(parseInt(e.target.value) || 2000)}
+          onChange={(e) => handleMaxTokensChange(parseInt(e.target.value))}
           disabled={isRunning}
           style={{
             width: '100%',
-            padding: '0.5rem',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '0.9rem',
-            backgroundColor: isRunning ? '#f5f5f5' : 'white',
+            height: '6px',
+            borderRadius: '3px',
+            background: '#e5e7eb',
+            outline: 'none',
+            cursor: isRunning ? 'not-allowed' : 'pointer',
           }}
         />
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: '0.75rem',
+          color: '#9ca3af',
+          marginTop: '0.375rem',
+        }}>
+          <span>1</span>
+          <span>16384</span>
+        </div>
       </div>
 
+      {/* Concurrency */}
       <div>
-        <label style={{
-          display: 'block',
-          fontSize: '0.85rem',
-          fontWeight: 'bold',
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           marginBottom: '0.5rem',
-          color: '#666',
         }}>
-          Concurrency: {localConfig.concurrency}
-        </label>
+          <label style={{
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            color: '#374151',
+          }}>
+            Concurrency
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            step="1"
+            value={localConfig.concurrency}
+            onChange={(e) => {
+              const val = parseInt(e.target.value);
+              if (!isNaN(val) && val >= 1 && val <= 50) {
+                handleConcurrencyChange(val);
+              }
+            }}
+            disabled={isRunning}
+            style={{
+              width: '90px',
+              padding: '0.375rem 0.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              backgroundColor: isRunning ? '#f9fafb' : 'white',
+              textAlign: 'center',
+              color: '#111827',
+            }}
+          />
+        </div>
         <input
           type="range"
           min="1"
@@ -276,33 +396,30 @@ export default function LLMConfigPanel({
           disabled={isRunning}
           style={{
             width: '100%',
+            height: '6px',
+            borderRadius: '3px',
+            background: '#e5e7eb',
+            outline: 'none',
+            cursor: isRunning ? 'not-allowed' : 'pointer',
           }}
         />
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           fontSize: '0.75rem',
-          color: '#999',
-          marginTop: '0.25rem',
+          color: '#9ca3af',
+          marginTop: '0.375rem',
         }}>
           <span>Sequential (1)</span>
           <span>Parallel (50)</span>
         </div>
-        <p style={{
-          margin: '0.25rem 0 0 0',
-          fontSize: '0.75rem',
-          color: '#666',
-          fontStyle: 'italic',
-        }}>
-          Number of rows to process simultaneously
-        </p>
       </div>
 
       {onRunAll && (
         <div style={{
-          marginTop: '1rem',
-          paddingTop: '1rem',
-          borderTop: '1px solid #ddd',
+          marginTop: '0.5rem',
+          paddingTop: '1.5rem',
+          borderTop: '1px solid #e5e7eb',
         }}>
           <button
             onClick={async () => {
@@ -317,29 +434,29 @@ export default function LLMConfigPanel({
             disabled={isRunning || !hasValidPrompt}
             style={{
               width: '100%',
-              padding: '0.875rem 1.25rem',
-              backgroundColor: (isRunning || !hasValidPrompt) ? '#ccc' : '#28a745',
+              padding: '0.75rem 1rem',
+              backgroundColor: (isRunning || !hasValidPrompt) ? '#d1d5db' : '#10b981',
               color: 'white',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: '8px',
               cursor: (isRunning || !hasValidPrompt) ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: '600',
-              boxShadow: (isRunning || !hasValidPrompt) ? 'none' : '0 2px 4px rgba(40, 167, 69, 0.2)',
-              transition: 'all 0.2s ease',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              transition: 'all 0.15s ease',
+              boxShadow: (isRunning || !hasValidPrompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
             }}
             onMouseEnter={(e) => {
               if (!isRunning && hasValidPrompt) {
-                e.currentTarget.style.backgroundColor = '#218838';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(40, 167, 69, 0.3)';
+                e.currentTarget.style.backgroundColor = '#059669';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isRunning && hasValidPrompt) {
-                e.currentTarget.style.backgroundColor = '#28a745';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(40, 167, 69, 0.2)';
+                e.currentTarget.style.backgroundColor = '#10b981';
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
               } else {
-                e.currentTarget.style.backgroundColor = '#ccc';
+                e.currentTarget.style.backgroundColor = '#d1d5db';
                 e.currentTarget.style.boxShadow = 'none';
               }
             }}
@@ -365,14 +482,31 @@ export default function LLMConfigPanel({
             disabled={isRunning || !hasValidPrompt}
             style={{
               width: '100%',
-              padding: '0.75rem 1rem',
-              backgroundColor: (isRunning || !hasValidPrompt) ? '#ccc' : '#007bff',
+              padding: '0.625rem 1rem',
+              backgroundColor: (isRunning || !hasValidPrompt) ? '#d1d5db' : '#3b82f6',
               color: 'white',
               border: 'none',
-              borderRadius: '4px',
+              borderRadius: '8px',
               cursor: (isRunning || !hasValidPrompt) ? 'not-allowed' : 'pointer',
-              fontSize: '0.9rem',
+              fontSize: '0.875rem',
               fontWeight: '500',
+              transition: 'all 0.15s ease',
+              boxShadow: (isRunning || !hasValidPrompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isRunning && hasValidPrompt) {
+                e.currentTarget.style.backgroundColor = '#2563eb';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isRunning && hasValidPrompt) {
+                e.currentTarget.style.backgroundColor = '#3b82f6';
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+              } else {
+                e.currentTarget.style.backgroundColor = '#d1d5db';
+                e.currentTarget.style.boxShadow = 'none';
+              }
             }}
           >
             {isRunning ? 'Running...' : `Run Selected (${selectedRowIds.length})`}
@@ -382,13 +516,13 @@ export default function LLMConfigPanel({
       
       {!hasValidPrompt && (
         <div style={{
-          marginTop: '1rem',
+          marginTop: '0.5rem',
           padding: '0.75rem',
-          backgroundColor: '#fff3cd',
-          color: '#856404',
-          borderRadius: '4px',
-          fontSize: '0.85rem',
-          border: '1px solid #ffeaa7',
+          backgroundColor: '#fef3c7',
+          color: '#92400e',
+          borderRadius: '8px',
+          fontSize: '0.875rem',
+          border: '1px solid #fde68a',
         }}>
           ⚠️ Save a valid prompt template before running
         </div>
@@ -396,18 +530,19 @@ export default function LLMConfigPanel({
       
       {error && (
         <div style={{
-          marginTop: '1rem',
+          marginTop: '0.5rem',
           padding: '0.75rem',
-          backgroundColor: '#fee',
-          color: '#c33',
-          borderRadius: '4px',
-          fontSize: '0.9rem',
-          border: '1px solid #fcc',
+          backgroundColor: '#fee2e2',
+          color: '#991b1b',
+          borderRadius: '8px',
+          fontSize: '0.875rem',
+          border: '1px solid #fecaca',
         }}>
           {error}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

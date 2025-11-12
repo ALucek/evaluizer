@@ -10,3 +10,5 @@ styling
 clean up the llm config section on the left
 
 add in azure, vertex and gemini providers
+
+run individual evals once they're in there
