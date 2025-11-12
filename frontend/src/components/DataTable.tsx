@@ -931,7 +931,11 @@ export default function DataTable({
     
     if (column === "Feedback") {
       const isEditing = editingFeedbackRowId === rowId;
-      const feedbackValue = evaluations[rowId]?.feedback ?? localRowData[rowId]?.feedback ?? "";
+      // When editing, prioritize localRowData to show user's current typing
+      // When not editing, prioritize evaluations for display
+      const feedbackValue = isEditing 
+        ? (localRowData[rowId]?.feedback ?? evaluations[rowId]?.feedback ?? "")
+        : (evaluations[rowId]?.feedback ?? localRowData[rowId]?.feedback ?? "");
       const evalOutput = evaluations[rowId]?.output;
       const localOutput = localRowData[rowId]?.output;
       const output = evalOutput !== undefined ? evalOutput : (localOutput !== undefined ? localOutput : "");
