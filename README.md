@@ -5,6 +5,8 @@ composite score
 scoring attached to prompts
 GEPA optimizer with scoring/eval framework
 
+save eva; reports
+
 styling
 
 clean up the llm config section on the left
