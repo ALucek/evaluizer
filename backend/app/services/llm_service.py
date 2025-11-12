@@ -1,65 +1,10 @@
-import os
 import re
 from typing import Dict, Any, Optional
-from app.llm_config.llm_models import get_model_config, get_default_model, is_model_available, get_all_models
-from app.services.providers.registry import get_provider, is_provider_available
-from app.services.providers.base import LLMProvider
+from litellm import acompletion
 
 
 class LLMService:
-    """Service for interacting with LLM providers"""
-    
-    def __init__(self):
-        self._providers: Dict[str, LLMProvider] = {}
-    
-    def _get_provider_for_model(self, model_id: str) -> LLMProvider:
-        """
-        Get or create a provider instance for the given model.
-        
-        Args:
-            model_id: The model identifier
-        
-        Returns:
-            An LLMProvider instance
-        """
-        model_config = get_model_config(model_id)
-        if not model_config:
-            raise ValueError(f"Model '{model_id}' not found")
-        
-        provider_name = model_config.provider
-        
-        # Check if we already have this provider cached
-        if provider_name in self._providers:
-            return self._providers[provider_name]
-        
-        # Create a new provider instance
-        if not is_provider_available(provider_name):
-            from app.services.providers.registry import list_providers
-            available = ", ".join(list_providers())
-            raise ValueError(f"Provider '{provider_name}' not available. Available providers: {available}")
-        
-        # Get provider-specific configuration from model config
-        provider_kwargs = {}
-        
-        # Handle API key environment variable
-        if model_config.requires_api_key_env:
-            api_key = os.getenv(model_config.requires_api_key_env)
-            if api_key:
-                provider_kwargs["api_key"] = api_key
-        
-        # Handle base URL environment variable
-        if model_config.base_url_env:
-            base_url = os.getenv(model_config.base_url_env)
-            if base_url:
-                provider_kwargs["base_url"] = base_url
-        
-        # Create provider instance
-        provider = get_provider(provider_name, **provider_kwargs)
-        
-        # Cache it for reuse
-        self._providers[provider_name] = provider
-        
-        return provider
+    """Service for interacting with LLM providers via LiteLLM"""
     
     def render_prompt(self, prompt_template: str, row_data: Dict[str, Any], available_columns: list = None) -> str:
         """
@@ -102,65 +47,41 @@ class LLMService:
     async def completion(
         self,
         prompt: str,
-        model: Optional[str] = None,
+        model: str,
         temperature: Optional[float] = None,
         max_completion_tokens: Optional[int] = None,
     ) -> str:
         """
-        Get a completion from the LLM.
+        Get a completion from the LLM via LiteLLM.
         
         Args:
             prompt: The prompt to send to the LLM
-            model: Model ID (defaults to configured default model)
-            temperature: Temperature setting (defaults to model's default)
-            max_completion_tokens: Maximum completion tokens to generate (defaults to model's default)
+            model: Any LiteLLM-supported model ID (e.g., 'gpt-4', 'azure/gpt-4', 'gemini/gemini-pro')
+            temperature: Temperature setting (defaults to 1.0)
+            max_completion_tokens: Maximum tokens to generate (defaults to 2000)
         
         Returns:
             The complete response text from the LLM
-        
-        Raises:
-            ValueError: If model is not available
-            Exception: If the provider call fails
         """
-        # Get model configuration
-        model_id = model or get_default_model()
-        if not is_model_available(model_id):
-            raise ValueError(f"Model '{model_id}' is not available. Available models: {', '.join(get_all_models().keys())}")
+        # Use defaults if not provided
+        final_temperature = temperature if temperature is not None else 1.0
+        final_max_tokens = max_completion_tokens if max_completion_tokens is not None else 2000
         
-        model_config = get_model_config(model_id)
-        if not model_config:
-            raise ValueError(f"Configuration not found for model '{model_id}'")
+        # Call LiteLLM directly - it handles everything!
+        response = await acompletion(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=final_temperature,
+            max_tokens=final_max_tokens,
+        )
         
-        # Use model defaults if not provided
-        final_temperature = temperature if temperature is not None else model_config.default_temperature
-        final_max_tokens = max_completion_tokens if max_completion_tokens is not None else model_config.default_max_tokens
+        # Extract text from response
+        if response and response.choices and len(response.choices) > 0:
+            choice = response.choices[0]
+            if choice.message and choice.message.content:
+                return choice.message.content
         
-        # Get the appropriate provider for this model
-        provider = self._get_provider_for_model(model_id)
-        
-        # Prepare provider-specific parameters
-        provider_kwargs = {}
-        
-        # Pass max_tokens_param for OpenAI provider (needed for GPT-5 models)
-        if model_config.provider == "openai":
-            provider_kwargs["max_tokens_param"] = model_config.max_tokens_param
-        
-        # Add any model-specific extra parameters
-        if model_config.extra_params:
-            provider_kwargs.update(model_config.extra_params)
-        
-        try:
-            # Call the provider's completion method
-            response = await provider.completion(
-                prompt=prompt,
-                model=model_id,
-                temperature=final_temperature,
-                max_tokens=final_max_tokens,
-                **provider_kwargs
-            )
-            return response
-        except Exception as e:
-            raise Exception(f"Error calling LLM provider '{model_config.provider}': {str(e)}")
+        return ""
 
 
 # Global instance

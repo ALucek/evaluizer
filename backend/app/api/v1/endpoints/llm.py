@@ -10,53 +10,15 @@ from app.models.csv_data import CSVRow, CSVFile
 from app.models.evaluation import Evaluation
 from app.services.llm_service import llm_service
 from app.schemas.evaluation import EvaluationResponse
-from app.llm_config.llm_models import get_all_models, get_default_model
 
 
 router = APIRouter()
 
 
-class ModelInfo(BaseModel):
-    """Model information for API responses"""
-    id: str
-    label: str
-    provider: str
-    default_temperature: float
-    default_max_tokens: int
-    supports_streaming: bool
-
-
-@router.get("/models", response_model=List[ModelInfo])
-async def get_available_models():
-    """
-    Get all available LLM models and their configurations.
-    """
-    models = get_all_models()
-    return [
-        ModelInfo(
-            id=config.id,
-            label=config.label,
-            provider=config.provider,
-            default_temperature=config.default_temperature,
-            default_max_tokens=config.default_max_tokens,
-            supports_streaming=config.supports_streaming,
-        )
-        for config in models.values()
-    ]
-
-
-@router.get("/models/default")
-async def get_default_model_id():
-    """
-    Get the default model ID.
-    """
-    return {"model_id": get_default_model()}
-
-
 class RunPromptRequest(BaseModel):
     prompt_id: int
     csv_row_id: int
-    model: str = "gpt-5-mini"
+    model: str  # Any LiteLLM-supported model ID (e.g., 'gpt-4', 'azure/gpt-4', 'gemini/gemini-pro')
     temperature: float = 1.0
     max_tokens: int = 2000
     prompt_content: Optional[str] = None  # Optional override for prompt content (for unsaved edits)

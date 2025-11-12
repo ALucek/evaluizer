@@ -10,5 +10,5 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "python-multipart>=0.0.6",
     "pydantic>=2.0.0",
-    "openai>=1.0.0",
+    "litellm>=1.0.0",
 ]

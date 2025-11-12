@@ -571,15 +571,6 @@ export async function updatePromptForCSV(csvId: number, prompt: string): Promise
   return getCSVData(csvId);
 }
 
-export interface ModelInfo {
-  id: string;
-  label: string;
-  provider: string;
-  default_temperature: number;
-  default_max_tokens: number;
-  supports_streaming: boolean;
-}
-
 export interface RunPromptConfig {
   promptId: number;
   csvRowId: number;
@@ -587,43 +578,6 @@ export interface RunPromptConfig {
   temperature: number;
   maxTokens: number;
   promptContent?: string;  // Optional override for prompt content (for unsaved edits)
-}
-
-export async function getAvailableModels(): Promise<ModelInfo[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/llm/models`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch models: ${response.status} ${errorText}`);
-    }
-
-    return response.json();
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
-    }
-    throw error;
-  }
-}
-
-export async function getDefaultModelId(): Promise<string> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/llm/models/default`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch default model: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.model_id;
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
-    }
-    throw error;
-  }
 }
 
 export async function runPrompt(config: RunPromptConfig): Promise<Evaluation> {

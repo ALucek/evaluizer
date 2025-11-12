@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getAvailableModels, getDefaultModelId, ModelInfo } from '../services/api';
 
 export interface LLMConfig {
   model: string;
@@ -30,60 +29,6 @@ export default function LLMConfigPanel({
   hasValidPrompt = false,
 }: LLMConfigPanelProps) {
   const [localConfig, setLocalConfig] = useState<LLMConfig>(config);
-  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
-  const [modelsError, setModelsError] = useState<string | null>(null);
-
-  // Fetch available models from backend
-  useEffect(() => {
-    async function loadModels() {
-      try {
-        setModelsLoading(true);
-        setModelsError(null);
-        const models = await getAvailableModels();
-        setAvailableModels(models);
-        
-        // If current model is not in the list, set to default
-        const modelIds = models.map(m => m.id);
-        if (!modelIds.includes(config.model)) {
-          try {
-            const defaultModelId = await getDefaultModelId();
-            if (modelIds.includes(defaultModelId)) {
-              const defaultModel = models.find(m => m.id === defaultModelId);
-              const newConfig = {
-                ...config,
-                model: defaultModelId,
-                temperature: defaultModel?.default_temperature ?? config.temperature,
-                maxTokens: defaultModel?.default_max_tokens ?? config.maxTokens,
-              };
-              setLocalConfig(newConfig);
-              onConfigChange(newConfig);
-            }
-          } catch (err) {
-            // If we can't get default, just use first model
-            if (models.length > 0) {
-              const newConfig = {
-                ...config,
-                model: models[0].id,
-                temperature: models[0].default_temperature,
-                maxTokens: models[0].default_max_tokens,
-              };
-              setLocalConfig(newConfig);
-              onConfigChange(newConfig);
-            }
-          }
-        }
-      } catch (err) {
-        setModelsError(err instanceof Error ? err.message : 'Failed to load models');
-        console.error('Error loading models:', err);
-      } finally {
-        setModelsLoading(false);
-      }
-    }
-    
-    loadModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
 
   // Sync localConfig when config prop changes
   useEffect(() => {
@@ -145,7 +90,7 @@ export default function LLMConfigPanel({
         </p>
       </div>
 
-      {/* Model Selection */}
+      {/* Model ID Input */}
       <div>
         <label style={{
           display: 'block',
@@ -154,59 +99,32 @@ export default function LLMConfigPanel({
           marginBottom: '0.5rem',
           color: '#374151',
         }}>
-          Model
+          Model ID
         </label>
-        <select
+        <input
+          type="text"
           value={localConfig.model}
-          onChange={(e) => {
-            const selectedModel = availableModels.find(m => m.id === e.target.value);
-            if (selectedModel) {
-              // Update config with model defaults when switching models
-              const newConfig = {
-                ...localConfig,
-                model: selectedModel.id,
-                temperature: selectedModel.default_temperature,
-                maxTokens: selectedModel.default_max_tokens,
-              };
-              setLocalConfig(newConfig);
-              onConfigChange(newConfig);
-            } else {
-              handleModelChange(e.target.value);
-            }
-          }}
-          disabled={isRunning || modelsLoading}
+          onChange={(e) => handleModelChange(e.target.value)}
+          disabled={isRunning}
+          placeholder="e.g., gpt-4, azure/gpt-4, gemini/gemini-pro, vertex_ai/gemini-pro"
           style={{
             width: '100%',
             padding: '0.625rem 0.75rem',
             border: '1px solid #d1d5db',
             borderRadius: '8px',
             fontSize: '0.875rem',
-            backgroundColor: (isRunning || modelsLoading) ? '#f9fafb' : 'white',
-            cursor: (isRunning || modelsLoading) ? 'not-allowed' : 'pointer',
+            backgroundColor: isRunning ? '#f9fafb' : 'white',
             color: '#111827',
+            fontFamily: 'monospace',
           }}
-        >
-          {modelsLoading ? (
-            <option value="">Loading models...</option>
-          ) : availableModels.length === 0 ? (
-            <option value="">No models available</option>
-          ) : (
-            availableModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} {model.provider !== 'openai' ? `(${model.provider})` : ''}
-              </option>
-            ))
-          )}
-        </select>
-        {modelsError && (
-          <p style={{
-            margin: '0.5rem 0 0 0',
-            fontSize: '0.75rem',
-            color: '#dc2626',
-          }}>
-            ⚠️ {modelsError}
-          </p>
-        )}
+        />
+        <p style={{
+          margin: '0.5rem 0 0 0',
+          fontSize: '0.75rem',
+          color: '#6b7280',
+        }}>
+          Enter any LiteLLM-supported model ID. Examples: gpt-4, azure/your-deployment, gemini/gemini-pro
+        </p>
       </div>
 
       {/* Temperature */}
