@@ -102,7 +102,7 @@ register_provider("your_provider", YourProvider)
 
 ### 3. Add Models
 
-Add models that use your provider to `app/config/llm_models.py`:
+Add models that use your provider to `app/llm_config/llm_models.py`:
 
 ```python
 MODELS: Dict[str, ModelConfig] = {

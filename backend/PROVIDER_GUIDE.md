@@ -8,7 +8,8 @@ The LLM provider system allows you to easily add support for multiple LLM provid
 
 ```
 app/
-├── config/
+├── config.py                  # General app configuration
+├── llm_config/
 │   └── llm_models.py          # Model configurations (which provider each model uses)
 ├── services/
 │   ├── llm_service.py         # Main service that routes to providers
@@ -61,7 +62,7 @@ _PROVIDERS = {
 
 ### Step 3: Add Models
 
-In `app/config/llm_models.py`:
+In `app/llm_config/llm_models.py`:
 
 ```python
 MODELS = {

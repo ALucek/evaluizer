@@ -10,7 +10,7 @@ from app.models.csv_data import CSVRow, CSVFile
 from app.models.evaluation import Evaluation
 from app.services.llm_service import llm_service
 from app.schemas.evaluation import EvaluationResponse
-from app.config.llm_models import get_all_models, get_default_model
+from app.llm_config.llm_models import get_all_models, get_default_model
 
 
 router = APIRouter()

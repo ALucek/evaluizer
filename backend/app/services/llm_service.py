@@ -1,7 +1,7 @@
 import os
 import re
 from typing import Dict, Any, Optional
-from app.config.llm_models import get_model_config, get_default_model, is_model_available, get_all_models
+from app.llm_config.llm_models import get_model_config, get_default_model, is_model_available, get_all_models
 from app.services.providers.registry import get_provider, is_provider_available
 from app.services.providers.base import LLMProvider
 

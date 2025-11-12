@@ -21,6 +21,8 @@ To add a new provider:
 2. Implement the completion() method with the standard signature
 3. Register it in app/services/providers/registry.py using register_provider()
 4. Add models that use this provider to the MODELS dictionary below
+
+Note: This file is in app/llm_config/ (not app/config/) to avoid conflicts with app/config.py
 """
 
 from typing import Dict, Any, Optional
