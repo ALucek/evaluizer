@@ -1029,14 +1029,7 @@ export default function DataTable({
                   width: '60px',
                   minWidth: '60px',
                   maxWidth: '60px',
-                  transition: 'background-color 0.2s',
                   verticalAlign: 'middle',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#e0e0e0';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f5f5f5';
                 }}
               >
                 #

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getAvailableModels, getDefaultModelId, ModelInfo } from '../services/api';
 
 export interface LLMConfig {
   model: string;
@@ -18,12 +19,6 @@ interface LLMConfigPanelProps {
   hasValidPrompt?: boolean;
 }
 
-const AVAILABLE_MODELS = [
-  { value: 'gpt-5', label: 'GPT-5' },
-  { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
-  { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
-];
-
 export default function LLMConfigPanel({
   config,
   onConfigChange,
@@ -35,6 +30,60 @@ export default function LLMConfigPanel({
   hasValidPrompt = false,
 }: LLMConfigPanelProps) {
   const [localConfig, setLocalConfig] = useState<LLMConfig>(config);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  // Fetch available models from backend
+  useEffect(() => {
+    async function loadModels() {
+      try {
+        setModelsLoading(true);
+        setModelsError(null);
+        const models = await getAvailableModels();
+        setAvailableModels(models);
+        
+        // If current model is not in the list, set to default
+        const modelIds = models.map(m => m.id);
+        if (!modelIds.includes(config.model)) {
+          try {
+            const defaultModelId = await getDefaultModelId();
+            if (modelIds.includes(defaultModelId)) {
+              const defaultModel = models.find(m => m.id === defaultModelId);
+              const newConfig = {
+                ...config,
+                model: defaultModelId,
+                temperature: defaultModel?.default_temperature ?? config.temperature,
+                maxTokens: defaultModel?.default_max_tokens ?? config.maxTokens,
+              };
+              setLocalConfig(newConfig);
+              onConfigChange(newConfig);
+            }
+          } catch (err) {
+            // If we can't get default, just use first model
+            if (models.length > 0) {
+              const newConfig = {
+                ...config,
+                model: models[0].id,
+                temperature: models[0].default_temperature,
+                maxTokens: models[0].default_max_tokens,
+              };
+              setLocalConfig(newConfig);
+              onConfigChange(newConfig);
+            }
+          }
+        }
+      } catch (err) {
+        setModelsError(err instanceof Error ? err.message : 'Failed to load models');
+        console.error('Error loading models:', err);
+      } finally {
+        setModelsLoading(false);
+      }
+    }
+    
+    loadModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Sync localConfig when config prop changes
   useEffect(() => {
@@ -94,24 +143,55 @@ export default function LLMConfigPanel({
         </label>
         <select
           value={localConfig.model}
-          onChange={(e) => handleModelChange(e.target.value)}
-          disabled={isRunning}
+          onChange={(e) => {
+            const selectedModel = availableModels.find(m => m.id === e.target.value);
+            if (selectedModel) {
+              // Update config with model defaults when switching models
+              const newConfig = {
+                ...localConfig,
+                model: selectedModel.id,
+                temperature: selectedModel.default_temperature,
+                maxTokens: selectedModel.default_max_tokens,
+              };
+              setLocalConfig(newConfig);
+              onConfigChange(newConfig);
+            } else {
+              handleModelChange(e.target.value);
+            }
+          }}
+          disabled={isRunning || modelsLoading}
           style={{
             width: '100%',
             padding: '0.5rem',
             border: '1px solid #ddd',
             borderRadius: '4px',
             fontSize: '0.9rem',
-            backgroundColor: isRunning ? '#f5f5f5' : 'white',
-            cursor: isRunning ? 'not-allowed' : 'pointer',
+            backgroundColor: (isRunning || modelsLoading) ? '#f5f5f5' : 'white',
+            cursor: (isRunning || modelsLoading) ? 'not-allowed' : 'pointer',
           }}
         >
-          {AVAILABLE_MODELS.map((model) => (
-            <option key={model.value} value={model.value}>
-              {model.label}
-            </option>
-          ))}
+          {modelsLoading ? (
+            <option value="">Loading models...</option>
+          ) : availableModels.length === 0 ? (
+            <option value="">No models available</option>
+          ) : (
+            availableModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} {model.provider !== 'openai' ? `(${model.provider})` : ''}
+              </option>
+            ))
+          )}
         </select>
+        {modelsError && (
+          <p style={{
+            margin: '0.25rem 0 0 0',
+            fontSize: '0.75rem',
+            color: '#c33',
+            fontStyle: 'italic',
+          }}>
+            ⚠️ {modelsError}
+          </p>
+        )}
       </div>
 
       <div>
