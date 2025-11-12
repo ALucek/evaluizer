@@ -28,6 +28,7 @@ class CSVFileWithRowsResponse(BaseModel):
     filename: str
     uploaded_at: datetime
     columns: List[str]
+    row_count: int
     rows: List[CSVRowResponse]
     
     class Config:

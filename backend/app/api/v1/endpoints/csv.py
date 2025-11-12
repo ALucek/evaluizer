@@ -4,11 +4,13 @@ from sqlalchemy.orm import Session
 import csv
 import json
 import io
+import zipfile
 from typing import List
 
 from app.database import get_db
 from app.models.csv_data import CSVFile, CSVRow
 from app.models.evaluation import Evaluation
+from app.models.prompt import Prompt
 from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
 router = APIRouter()
@@ -91,6 +93,7 @@ async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
         filename=csv_file.filename,
         uploaded_at=csv_file.uploaded_at,
         columns=json.loads(csv_file.columns),
+        row_count=len(rows),
         rows=[
             CSVRowResponse(
                 id=row.id,
@@ -104,10 +107,13 @@ async def get_csv_data(csv_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/{csv_id}")
 async def delete_csv(csv_id: int, db: Session = Depends(get_db)):
-    """Delete a CSV file and all its rows"""
+    """Delete a CSV file and all its rows, evaluations, and prompts"""
     csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
     if not csv_file:
         raise HTTPException(status_code=404, detail="CSV file not found")
+    
+    # Delete prompts associated with this CSV file
+    db.query(Prompt).filter(Prompt.csv_file_id == csv_id).delete()
     
     # Delete the CSVFile record (rows and evaluations will be deleted automatically due to cascade)
     db.delete(csv_file)
@@ -224,7 +230,7 @@ async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session =
 
 @router.get("/{csv_id}/export")
 async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)):
-    """Export CSV file with all evaluation data (output, annotation, feedback)"""
+    """Export CSV file with all evaluation data (output, annotation, feedback) and prompt as a ZIP file"""
     csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
     if not csv_file:
         raise HTTPException(status_code=404, detail="CSV file not found")
@@ -236,13 +242,17 @@ async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)
     evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
     eval_map = {eval.csv_row_id: eval for eval in evaluations}
     
+    # Get prompt for this CSV file
+    prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
+    prompt_content = prompt.content if prompt else ""
+    
     # Get original columns
     original_columns = json.loads(csv_file.columns)
     
     # Create CSV with original columns + evaluation columns
-    output = io.StringIO()
+    csv_output = io.StringIO()
     fieldnames = original_columns + ["Output", "Annotation", "Feedback"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer = csv.DictWriter(csv_output, fieldnames=fieldnames)
     writer.writeheader()
     
     # Write each row with its evaluation data
@@ -260,16 +270,29 @@ async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)
         
         writer.writerow(row_dict)
     
-    # Prepare response
-    output.seek(0)
-    csv_content = output.getvalue()
+    # Prepare CSV content
+    csv_output.seek(0)
+    csv_content = csv_output.getvalue()
     
-    # Generate filename
+    # Generate filenames
     base_filename = csv_file.filename.rsplit('.', 1)[0] if '.' in csv_file.filename else csv_file.filename
-    export_filename = f"{base_filename}_export.csv"
+    csv_filename = f"{base_filename}_export.csv"
+    prompt_filename = f"{base_filename}_prompt.txt"
+    zip_filename = f"{base_filename}_export.zip"
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Add CSV file to ZIP
+        zip_file.writestr(csv_filename, csv_content.encode('utf-8'))
+        
+        # Add prompt file to ZIP
+        zip_file.writestr(prompt_filename, prompt_content.encode('utf-8'))
+    
+    zip_buffer.seek(0)
     
     return StreamingResponse(
-        io.BytesIO(csv_content.encode('utf-8')),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={export_filename}"}
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
     )

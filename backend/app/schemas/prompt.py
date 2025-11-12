@@ -8,6 +8,8 @@ class PromptResponse(BaseModel):
     name: Optional[str] = None
     content: str
     csv_file_id: Optional[int] = None
+    version: int
+    parent_prompt_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     
@@ -19,10 +21,16 @@ class CreatePromptRequest(BaseModel):
     name: Optional[str] = None
     content: str
     csv_file_id: Optional[int] = None
+    parent_prompt_id: Optional[int] = None  # If provided, creates a new version
 
 
 class UpdatePromptRequest(BaseModel):
     name: Optional[str] = None
     content: Optional[str] = None
     csv_file_id: Optional[int] = None
+
+
+class CreateVersionRequest(BaseModel):
+    content: str
+    name: Optional[str] = None
 
