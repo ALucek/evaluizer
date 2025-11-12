@@ -40,6 +40,7 @@ export default function DataTable({
   const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({});
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const resizeStartXRef = useRef<number>(0);
+  const rowNumberCellRefs = useRef<{ [key: number]: HTMLTableCellElement | null }>({});
   const resizeStartWidthRef = useRef<number>(0);
   const resizeColumnRef = useRef<string | null>(null);
   const menuRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -299,6 +300,22 @@ export default function DataTable({
     setEditingFeedbackRowId(null);
     setRenamingColumn(null);
   }, [data?.id]);
+
+  // Sync expanded state with # column cells
+  useEffect(() => {
+    if (data?.rows) {
+      data.rows.forEach((row, idx) => {
+        const numberCell = rowNumberCellRefs.current[row.id];
+        if (numberCell) {
+          if (expandedRowId === row.id) {
+            numberCell.style.backgroundColor = '#e7f3ff';
+          } else {
+            numberCell.style.backgroundColor = idx % 2 === 0 ? '#fff' : '#f9f9f9';
+          }
+        }
+      });
+    }
+  }, [expandedRowId, data?.rows]);
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -1000,23 +1017,26 @@ export default function DataTable({
             tableLayout: 'fixed',
           }}
         >
-          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 20 }}>
             <tr style={{ backgroundColor: '#f5f5f5', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
               <th
                 style={{
                   padding: '0.5rem 0.75rem',
                   textAlign: 'center',
-                  borderBottom: '2px solid #ddd',
                   fontWeight: 'bold',
                   backgroundColor: '#f5f5f5',
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 11,
                   whiteSpace: 'nowrap',
                   width: '60px',
                   minWidth: '60px',
                   maxWidth: '60px',
-                  boxShadow: '2px 0 4px rgba(0,0,0,0.1)',
+                  transition: 'background-color 0.2s',
+                  verticalAlign: 'middle',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#e0e0e0';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f5f5f5';
                 }}
               >
                 #
@@ -1030,7 +1050,6 @@ export default function DataTable({
                     style={{
                       padding: '0.5rem 0.75rem',
                       textAlign: 'center',
-                      borderBottom: '2px solid #ddd',
                       fontWeight: 'bold',
                       backgroundColor: '#f5f5f5',
                       position: 'relative',
@@ -1038,6 +1057,8 @@ export default function DataTable({
                       width: `${columnWidth}px`,
                       minWidth: `${columnWidth}px`,
                       maxWidth: `${columnWidth}px`,
+                      zIndex: 1,
+                      verticalAlign: 'middle',
                     }}
                   >
                     <div style={{
@@ -1122,7 +1143,7 @@ export default function DataTable({
                                   borderRadius: '4px',
                                   boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                                   minWidth: '120px',
-                                  zIndex: 1000,
+                                  zIndex: 100,
                                   display: 'flex',
                                   flexDirection: 'column',
                                 }}>
@@ -1188,7 +1209,7 @@ export default function DataTable({
                         width: '1px',
                         cursor: 'col-resize',
                         backgroundColor: resizingColumn === column ? '#007bff' : '#ddd',
-                        zIndex: 30,
+                        zIndex: 2,
                         transition: 'background-color 0.2s',
                       }}
                       onMouseEnter={(e) => {
@@ -1223,33 +1244,41 @@ export default function DataTable({
                   }}
                   onMouseEnter={(e) => {
                     if (!isExpanded) {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
+                      const hoverColor = '#f0f0f0';
+                      e.currentTarget.style.backgroundColor = hoverColor;
+                      const numberCell = rowNumberCellRefs.current[row.id];
+                      if (numberCell) {
+                        numberCell.style.backgroundColor = hoverColor;
+                      }
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isExpanded) {
-                      e.currentTarget.style.backgroundColor = idx % 2 === 0 ? '#fff' : '#f9f9f9';
+                      const baseColor = idx % 2 === 0 ? '#fff' : '#f9f9f9';
+                      e.currentTarget.style.backgroundColor = baseColor;
+                      const numberCell = rowNumberCellRefs.current[row.id];
+                      if (numberCell) {
+                        numberCell.style.backgroundColor = baseColor;
+                      }
                     }
                   }}
                 >
                   <td
+                    ref={(el) => { rowNumberCellRefs.current[row.id] = el; }}
                     style={{
                       padding: isExpanded ? '1rem 0.75rem' : '0.5rem 0.75rem',
-                      borderBottom: '1px solid #eee',
                       textAlign: 'center',
                       fontWeight: '500',
                       color: '#666',
                       backgroundColor: isExpanded 
                         ? '#e7f3ff' 
                         : idx % 2 === 0 ? '#fff' : '#f9f9f9',
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 1,
                       whiteSpace: 'nowrap',
                       width: '60px',
                       minWidth: '60px',
                       maxWidth: '60px',
-                      boxShadow: '2px 0 4px rgba(0,0,0,0.1)',
+                      transition: 'background-color 0.2s',
+                      verticalAlign: 'top',
                     }}
                   >
                     {idx + 1}
@@ -1263,7 +1292,6 @@ export default function DataTable({
                         key={column}
                         style={{
                           padding: isExpanded ? '1rem 0.75rem' : '0.5rem 0.75rem',
-                          borderBottom: '1px solid #eee',
                           overflow: isExpanded || isFeedbackColumn ? 'visible' : 'hidden',
                           textOverflow: isExpanded || isFeedbackColumn ? 'clip' : 'ellipsis',
                           whiteSpace: (isExpanded && !isEvalColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
