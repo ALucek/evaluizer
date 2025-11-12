@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import csv
 import json
@@ -7,7 +8,8 @@ from typing import List
 
 from app.database import get_db
 from app.models.csv_data import CSVFile, CSVRow
-from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest
+from app.models.evaluation import Evaluation
+from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
 router = APIRouter()
 
@@ -161,4 +163,113 @@ async def drop_columns(csv_id: int, request: DropColumnsRequest, db: Session = D
         uploaded_at=csv_file.uploaded_at,
         columns=new_columns,
         row_count=row_count
+    )
+
+
+@router.post("/{csv_id}/rename-column", response_model=CSVFileResponse)
+async def rename_column(csv_id: int, request: RenameColumnRequest, db: Session = Depends(get_db)):
+    """Rename a column in a CSV dataset"""
+    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
+    if not csv_file:
+        raise HTTPException(status_code=404, detail="CSV file not found")
+    
+    current_columns = json.loads(csv_file.columns)
+    
+    # Validate that the column to rename exists
+    if request.old_name not in current_columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Column not found: {request.old_name}"
+        )
+    
+    # Validate that the new name doesn't already exist
+    if request.new_name in current_columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Column already exists: {request.new_name}"
+        )
+    
+    # Validate that new name is not empty
+    if not request.new_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="New column name cannot be empty"
+        )
+    
+    # Update columns list
+    new_columns = [col if col != request.old_name else request.new_name for col in current_columns]
+    csv_file.columns = json.dumps(new_columns)
+    
+    # Update all rows to rename the column key
+    rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).all()
+    for row in rows:
+        row_dict = json.loads(row.row_data)
+        # Rename the column key in row data
+        if request.old_name in row_dict:
+            row_dict[request.new_name] = row_dict.pop(request.old_name)
+        row.row_data = json.dumps(row_dict)
+    
+    db.commit()
+    db.refresh(csv_file)
+    
+    row_count = len(rows)
+    return CSVFileResponse(
+        id=csv_file.id,
+        filename=csv_file.filename,
+        uploaded_at=csv_file.uploaded_at,
+        columns=new_columns,
+        row_count=row_count
+    )
+
+
+@router.get("/{csv_id}/export")
+async def export_csv_with_evaluations(csv_id: int, db: Session = Depends(get_db)):
+    """Export CSV file with all evaluation data (output, annotation, feedback)"""
+    csv_file = db.query(CSVFile).filter(CSVFile.id == csv_id).first()
+    if not csv_file:
+        raise HTTPException(status_code=404, detail="CSV file not found")
+    
+    # Get all rows
+    rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).order_by(CSVRow.id).all()
+    
+    # Get all evaluations for this CSV file
+    evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
+    eval_map = {eval.csv_row_id: eval for eval in evaluations}
+    
+    # Get original columns
+    original_columns = json.loads(csv_file.columns)
+    
+    # Create CSV with original columns + evaluation columns
+    output = io.StringIO()
+    fieldnames = original_columns + ["Output", "Annotation", "Feedback"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    
+    # Write each row with its evaluation data
+    for row in rows:
+        row_dict = json.loads(row.row_data)
+        evaluation = eval_map.get(row.id)
+        
+        # Add evaluation columns
+        row_dict["Output"] = evaluation.output if evaluation and evaluation.output else ""
+        row_dict["Annotation"] = (
+            evaluation.annotation if evaluation and evaluation.annotation is not None
+            else ""
+        )
+        row_dict["Feedback"] = evaluation.feedback if evaluation and evaluation.feedback else ""
+        
+        writer.writerow(row_dict)
+    
+    # Prepare response
+    output.seek(0)
+    csv_content = output.getvalue()
+    
+    # Generate filename
+    base_filename = csv_file.filename.rsplit('.', 1)[0] if '.' in csv_file.filename else csv_file.filename
+    export_filename = f"{base_filename}_export.csv"
+    
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode('utf-8')),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={export_filename}"}
     )

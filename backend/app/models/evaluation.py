@@ -9,8 +9,8 @@ class Evaluation(Base):
     __tablename__ = "evaluations"
     
     id = Column(Integer, primary_key=True, index=True)
-    csv_file_id = Column(Integer, ForeignKey("csv_files.id"), nullable=False)
-    csv_row_id = Column(Integer, ForeignKey("csv_rows.id"), nullable=False, unique=True)
+    csv_file_id = Column(Integer, ForeignKey("csv_files.id", ondelete="CASCADE"), nullable=False)
+    csv_row_id = Column(Integer, ForeignKey("csv_rows.id", ondelete="CASCADE"), nullable=False, unique=True)
     output = Column(Text, nullable=True)  # Generated output text
     annotation = Column(Integer, nullable=True)  # 1 for thumbs up, 0 for thumbs down, None for null
     feedback = Column(Text, nullable=True)  # User feedback text

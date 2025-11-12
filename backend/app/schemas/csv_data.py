@@ -36,3 +36,8 @@ class CSVFileWithRowsResponse(BaseModel):
 
 class DropColumnsRequest(BaseModel):
     columns: List[str]
+
+
+class RenameColumnRequest(BaseModel):
+    old_name: str
+    new_name: str

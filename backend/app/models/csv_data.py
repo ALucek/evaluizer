@@ -22,7 +22,7 @@ class CSVRow(Base):
     __tablename__ = "csv_rows"
     
     id = Column(Integer, primary_key=True, index=True)
-    csv_file_id = Column(Integer, ForeignKey("csv_files.id"), nullable=False)
+    csv_file_id = Column(Integer, ForeignKey("csv_files.id", ondelete="CASCADE"), nullable=False)
     row_data = Column(Text, nullable=False)  # JSON string of row data (original columns only)
     
     csv_file = relationship("CSVFile", back_populates="rows")
