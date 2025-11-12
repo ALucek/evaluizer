@@ -890,6 +890,11 @@ export default function DataTable({
             color: isDisabled ? '#adb5bd' : (feedbackValue ? '#212529' : '#999'),
             fontStyle: feedbackValue ? 'normal' : 'italic',
             opacity: isDisabled ? 0.6 : 1,
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            overflow: 'hidden',
+            maxWidth: '100%',
           }}
         >
           {feedbackValue || (isDisabled ? "—" : "Click to add feedback...")}
@@ -1185,6 +1190,7 @@ export default function DataTable({
                   </td>
                   {allColumns.map((column) => {
                     const isEvalColumn = EVAL_COLUMNS.includes(column);
+                    const isFeedbackColumn = column === "Feedback";
                     const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : 120);
                     return (
                       <td
@@ -1192,10 +1198,10 @@ export default function DataTable({
                         style={{
                           padding: isExpanded ? '1rem 0.75rem' : '0.5rem 0.75rem',
                           borderBottom: '1px solid #eee',
-                          overflow: isExpanded ? 'visible' : 'hidden',
-                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                          whiteSpace: isExpanded && !isEvalColumn ? 'pre-wrap' : 'nowrap',
-                          wordBreak: isExpanded ? 'break-word' : 'normal',
+                          overflow: isExpanded || isFeedbackColumn ? 'visible' : 'hidden',
+                          textOverflow: isExpanded || isFeedbackColumn ? 'clip' : 'ellipsis',
+                          whiteSpace: (isExpanded && !isEvalColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
+                          wordBreak: (isExpanded || isFeedbackColumn) ? 'break-word' : 'normal',
                           verticalAlign: 'top',
                           width: `${columnWidth}px`,
                           minWidth: `${columnWidth}px`,
