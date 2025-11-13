@@ -7,8 +7,6 @@ GEPA optimizer with scoring/eval framework
 
 save eval reports
 
-styling
-
 run individual evals once they're in there
 
 add in llm as a judge evals

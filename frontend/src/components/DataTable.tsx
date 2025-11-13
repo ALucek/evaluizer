@@ -1343,26 +1343,38 @@ export default function DataTable({
                       onMouseDown={(e) => handleResizeStart(column, e)}
                       style={{
                         position: 'absolute',
-                        right: '0',
+                        right: '-3px',
                         top: 0,
                         bottom: 0,
-                        width: '1px',
+                        width: '16px',
                         cursor: 'col-resize',
-                        backgroundColor: resizingColumn === column ? 'var(--accent-primary)' : 'var(--border-primary)',
                         zIndex: 2,
                         transition: 'none',
+                        display: 'flex',
+                        alignItems: 'stretch',
+                        justifyContent: 'center',
                       }}
                       onMouseEnter={(e) => {
                         if (resizingColumn !== column) {
-                          e.currentTarget.style.backgroundColor = 'var(--border-accent)';
+                          (e.currentTarget.firstElementChild as HTMLElement | null)?.style.setProperty('background-color', 'var(--border-accent)');
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (resizingColumn !== column) {
-                          e.currentTarget.style.backgroundColor = 'var(--border-primary)';
+                          (e.currentTarget.firstElementChild as HTMLElement | null)?.style.setProperty('background-color', 'var(--border-primary)');
                         }
                       }}
-                    />
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: '1px',
+                          backgroundColor: resizingColumn === column ? 'var(--accent-primary)' : 'var(--border-primary)',
+                          flex: '0 0 1px',
+                          transition: 'background-color 0.15s ease',
+                        }}
+                      />
+                    </div>
                   </th>
                 );
               })}
