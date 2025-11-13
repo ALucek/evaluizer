@@ -240,7 +240,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         }
       `}</style>
       <div style={{
-        padding: '1.5rem',
+        padding: '0.75rem 1.5rem 1.5rem 1.5rem',
         border: '1px solid #ddd',
         borderRadius: '8px',
         backgroundColor: '#fafafa',
@@ -254,29 +254,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
           Use <code style={{ backgroundColor: '#fff3cd', padding: '2px 4px', borderRadius: '3px' }}>{'{{column_name}}'}</code> to insert column values
         </p>
       </div>
-
-      {/* Prompt Name Input - Only show when creating a new prompt */}
-      {(showNewPromptForm || (!prompt && allPromptNames.length === 0)) && (
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>
-            Prompt Name (required):
-          </label>
-          <input
-            type="text"
-            value={promptName}
-            onChange={(e) => setPromptName(e.target.value)}
-            placeholder="e.g., Main Prompt, Experiment A..."
-            style={{
-              width: '100%',
-              padding: '0.5rem 0.75rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '0.9rem',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-      )}
 
       {columns.length > 0 && (
         <div>
@@ -315,27 +292,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
       )}
 
-      {/* Validation indicator */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        padding: '0.5rem 0.75rem',
-        backgroundColor: validation.isValid ? '#d4edda' : '#f8d7da',
-        color: validation.isValid ? '#155724' : '#721c24',
-        borderRadius: '4px',
-        fontSize: '0.85rem',
-        border: `1px solid ${validation.isValid ? '#c3e6cb' : '#f5c6cb'}`,
-      }}>
-        <span style={{ fontSize: '1rem' }}>
-          {validation.isValid ? '✓' : '✗'}
-        </span>
-        <span>
-          {validation.isValid 
-            ? 'Valid prompt template' 
-            : validation.message || 'Invalid prompt template'}
-        </span>
-      </div>
 
       <textarea
         ref={textareaRef}
@@ -357,78 +313,124 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         }}
       />
 
-      {/* Save Buttons - Above Run All */}
+      {/* Save Button - Above Run All */}
       {(!prompt || showNewPromptForm) && (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {showNewPromptForm && allPromptNames.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {/* Prompt Name Input - Only show when creating a new prompt */}
+          {(showNewPromptForm || (!prompt && allPromptNames.length === 0)) && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>
+                Prompt Name (required):
+              </label>
+              <input
+                type="text"
+                value={promptName}
+                onChange={(e) => setPromptName(e.target.value)}
+                placeholder="e.g., Main Prompt, Experiment A..."
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {showNewPromptForm && allPromptNames.length > 0 && (
+              <button
+                onClick={() => {
+                  setShowNewPromptForm(false);
+                  setSelectedPromptName(allPromptNames[0]);
+                  const versions = groupedPrompts[allPromptNames[0]];
+                  if (versions && versions.length > 0) {
+                    onVersionSelect(versions[versions.length - 1].id);
+                  }
+                }}
+                style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                }}
+              >
+                Cancel
+              </button>
+            )}
             <button
-              onClick={() => {
-                setShowNewPromptForm(false);
-                setSelectedPromptName(allPromptNames[0]);
-                const versions = groupedPrompts[allPromptNames[0]];
-                if (versions && versions.length > 0) {
-                  onVersionSelect(versions[versions.length - 1].id);
-                }
-              }}
+              onClick={() => handleSave(false)}
+              disabled={isSaving || !validation.isValid || !promptName.trim()}
               style={{
+                flex: 1,
                 padding: '0.75rem 1rem',
-                backgroundColor: '#6c757d',
+                backgroundColor: (validation.isValid && promptName.trim()) ? '#007bff' : '#6c757d',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: 'pointer',
+                cursor: (isSaving || !validation.isValid || !promptName.trim()) ? 'not-allowed' : 'pointer',
                 fontSize: '1rem',
                 fontWeight: '500',
+                opacity: (isSaving || !validation.isValid || !promptName.trim()) ? 0.6 : 1,
               }}
             >
-              Cancel
+              {isSaving ? 'Saving...' : 'Save Prompt'}
             </button>
-          )}
-          <button
-            onClick={() => handleSave(false)}
-            disabled={isSaving || !validation.isValid || !promptName.trim()}
-            style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              backgroundColor: (validation.isValid && promptName.trim()) ? '#007bff' : '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: (isSaving || !validation.isValid || !promptName.trim()) ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: '500',
-              opacity: (isSaving || !validation.isValid || !promptName.trim()) ? 0.6 : 1,
-            }}
-          >
-            {isSaving ? 'Creating...' : 'Create Prompt'}
-          </button>
+          </div>
         </div>
       )}
 
       {/* Warning and Error Messages */}
-      {!validation.isValid && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#fef3c7',
-          color: '#92400e',
-          borderRadius: '8px',
-          fontSize: '0.875rem',
-          border: '1px solid #fde68a',
-        }}>
-          ⚠️ Save a valid prompt template before running
-        </div>
-      )}
-      
-      {error && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#fee2e2',
-          color: '#991b1b',
-          borderRadius: '8px',
-          fontSize: '0.875rem',
-          border: '1px solid #fecaca',
-        }}>
-          {error}
+      {((!prompt || !validation.isValid) || error) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {!validation.isValid && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#f8d7da',
+              color: '#721c24',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              border: '1px solid #f5c6cb',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <span style={{ fontSize: '1rem' }}>✗</span>
+              <span>{validation.message || 'Invalid prompt template'}</span>
+            </div>
+          )}
+          
+          {(!prompt || !validation.isValid) && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#fef3c7',
+              color: '#92400e',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              border: '1px solid #fde68a',
+            }}>
+              ⚠️ Save a valid prompt template before running
+            </div>
+          )}
+          
+          {error && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#fee2e2',
+              color: '#991b1b',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              border: '1px solid #fecaca',
+            }}>
+              {error}
+            </div>
+          )}
         </div>
       )}
 
@@ -445,28 +447,28 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 }
               }
             }}
-            disabled={isRunning || !validation.isValid}
+            disabled={isRunning || !validation.isValid || !prompt}
             style={{
               width: '100%',
               padding: '0.75rem 1rem',
-              backgroundColor: (isRunning || !validation.isValid) ? '#d1d5db' : '#10b981',
+              backgroundColor: (isRunning || !validation.isValid || !prompt) ? '#d1d5db' : '#10b981',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: (isRunning || !validation.isValid) ? 'not-allowed' : 'pointer',
+              cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
               fontSize: '0.875rem',
               fontWeight: '500',
               transition: 'all 0.15s ease',
-              boxShadow: (isRunning || !validation.isValid) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
+              boxShadow: (isRunning || !validation.isValid || !prompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
             }}
             onMouseEnter={(e) => {
-              if (!isRunning && validation.isValid) {
+              if (!isRunning && validation.isValid && prompt) {
                 e.currentTarget.style.backgroundColor = '#059669';
                 e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
               }
             }}
             onMouseLeave={(e) => {
-              if (!isRunning && validation.isValid) {
+              if (!isRunning && validation.isValid && prompt) {
                 e.currentTarget.style.backgroundColor = '#10b981';
                 e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
               } else {
