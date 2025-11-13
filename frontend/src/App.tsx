@@ -1,10 +1,8 @@
-import { useState, useEffect, startTransition } from 'react';
-import CSVUpload from './components/CSVUpload';
+import { useState, useEffect, useRef, useCallback, startTransition } from 'react';
 import CSVFileList from './components/CSVFileList';
 import DataTable from './components/DataTable';
 import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName } from './services/api';
-import PromptEditor from './components/PromptEditor';
-import LLMConfigPanel, { LLMConfig } from './components/LLMConfigPanel';
+import PromptEditor, { LLMConfig } from './components/PromptEditor';
 import './index.css';
 
 function App() {
@@ -16,7 +14,9 @@ function App() {
   const [promptVersions, setPromptVersions] = useState<Prompt[]>([]);
   const [groupedPrompts, setGroupedPrompts] = useState<Record<string, Prompt[]>>({});
   const [loading, setLoading] = useState(false);
+  const [loadingFileId, setLoadingFileId] = useState<number | null>(null); // Track which file is loading
   const [error, setError] = useState<string | null>(null);
+  const selectedFileIdRef = useRef<number | null>(null);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
     model: 'gpt-5-mini',
     temperature: 1.0,
@@ -40,15 +40,24 @@ function App() {
   };
 
   const loadCSVData = async (id: number) => {
-    setLoading(true);
+    // Only set loading state if we don't have data yet (initial load)
+    const isInitialLoad = csvData === null;
+    if (isInitialLoad) {
+      setLoading(true);
+    }
+    setLoadingFileId(id);
     setError(null);
     try {
       const data = await getCSVData(id);
-      setCsvData(data);
+      // Only update if this is still the selected file (prevent race conditions)
+      if (selectedFileIdRef.current === id) {
+        setCsvData(data);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load CSV data');
     } finally {
       setLoading(false);
+      setLoadingFileId(prev => prev === id ? null : prev);
     }
   };
 
@@ -101,6 +110,7 @@ function App() {
   };
 
   useEffect(() => {
+    selectedFileIdRef.current = selectedFileId;
     if (selectedFileId) {
       loadCSVData(selectedFileId);
       loadPrompt(selectedFileId);
@@ -113,10 +123,20 @@ function App() {
     }
   }, [selectedFileId]);
 
-  const handleUploadSuccess = (data: CSVData) => {
-    loadCSVFiles();
+  const handleUploadSuccess = useCallback(async (data: CSVData) => {
+    // Optimistically add the new file to the list
+    setCsvFiles(prevFiles => {
+      // Check if file already exists to avoid duplicates
+      if (prevFiles.some(f => f.id === data.id)) {
+        return prevFiles;
+      }
+      return [...prevFiles, data];
+    });
+    // Select the new file immediately
     setSelectedFileId(data.id);
-  };
+    // Reload file list in background to ensure consistency
+    loadCSVFiles();
+  }, []);
 
   const handleDeleteFile = async (id: number) => {
     try {
@@ -437,7 +457,7 @@ function App() {
         padding: '1.5rem',
         overflow: 'hidden',
       }}>
-        {/* Left Column - Upload, Prompt, and LLM Config (1/3) */}
+        {/* Left Column - Prompt, and LLM Config (1/3) */}
         <div style={{
           flex: '1',
           display: 'flex',
@@ -448,27 +468,80 @@ function App() {
           overflowX: 'hidden',
           paddingRight: '0.5rem',
         }}>
-          <CSVUpload onUploadSuccess={handleUploadSuccess} />
-          {selectedFileId && (
+          {selectedFileId ? (
+            <PromptEditor
+              prompt={currentPrompt}
+              groupedPrompts={groupedPrompts}
+              columns={currentColumns}
+              onSave={handleSavePrompt}
+              onVersionSelect={handleVersionSelect}
+              onDeletePrompt={handleDeletePrompt}
+              onContentChange={setCurrentPromptContent}
+              onAutoSave={handleAutoSave}
+              llmConfig={llmConfig}
+              onLLMConfigChange={setLlmConfig}
+              onRunAll={handleRunAll}
+              isRunning={isRunning}
+              error={error}
+            />
+          ) : (
             <>
-              <PromptEditor
-                prompt={currentPrompt}
-                groupedPrompts={groupedPrompts}
-                columns={currentColumns}
-                onSave={handleSavePrompt}
-                onVersionSelect={handleVersionSelect}
-                onDeletePrompt={handleDeletePrompt}
-                onContentChange={setCurrentPromptContent}
-                onAutoSave={handleAutoSave}
-              />
-              <LLMConfigPanel
-                config={llmConfig}
-                onConfigChange={setLlmConfig}
-                onRunAll={handleRunAll}
-                isRunning={isRunning}
-                error={error}
-                hasValidPrompt={!!currentPrompt && !!currentPrompt.content}
-              />
+              {/* Prompt Editor Placeholder */}
+              <div style={{
+                padding: '1.5rem',
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                backgroundColor: '#fafafa',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+              }}>
+                <div>
+                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#999' }}>Prompt Template</h2>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#bbb' }}>
+                    Select a CSV file to start creating prompts
+                  </p>
+                </div>
+                <div style={{
+                  minHeight: '200px',
+                  border: '1px dashed #ddd',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ccc',
+                  fontSize: '0.9rem',
+                }}>
+                  Prompt editor will appear here
+                </div>
+              </div>
+
+              {/* LLM Config Placeholder */}
+              <div style={{
+                border: '1px solid #dee2e6',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: '#f8f9fa',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: '500', color: '#999' }}>
+                    LLM Configuration
+                  </div>
+                  <span style={{ fontSize: '1rem', color: '#ddd' }}>▶</span>
+                </div>
+                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
+                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
+                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -487,6 +560,7 @@ function App() {
             currentPromptId={currentPrompt?.id}
             onSelectFile={setSelectedFileId}
             onDeleteFile={handleDeleteFile}
+            onUploadSuccess={handleUploadSuccess}
           />
 
           <div style={{
@@ -494,7 +568,7 @@ function App() {
             overflow: 'hidden',
             minHeight: 0, // Important for flexbox overflow
           }}>
-            {loading ? (
+            {loading && csvData === null ? (
               <div style={{ 
                 padding: '2rem', 
                 textAlign: 'center',
@@ -502,28 +576,12 @@ function App() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                color: '#999',
+                fontSize: '0.9rem',
               }}>
                 Loading...
               </div>
-            ) : csvFiles.length === 0 && !selectedFileId ? (
-              <div style={{ 
-                padding: '2rem', 
-                textAlign: 'center',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#666',
-              }}>
-                <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>
-                  Welcome to Evaluizer
-                </div>
-                <div style={{ fontSize: '0.9rem' }}>
-                  Upload a CSV file to get started
-                </div>
-              </div>
-            ) : (
+            ) : csvData ? (
               <DataTable 
                 data={csvData} 
                 onDropColumns={handleDropColumns}
@@ -536,6 +594,21 @@ function App() {
                 latestEvaluation={latestEvaluation}
                 clearAllOutputs={clearAllOutputs}
               />
+            ) : (
+              <div style={{ 
+                padding: '3rem', 
+                textAlign: 'center',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#999',
+              }}>
+                <div style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+                  Click the <strong style={{ color: '#666' }}>+</strong> button above to upload a CSV file
+                </div>
+              </div>
             )}
           </div>
         </div>

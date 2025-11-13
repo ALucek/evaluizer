@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { CSVData, exportCSV } from '../services/api';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { CSVData, exportCSV, uploadCSV } from '../services/api';
 
 interface CSVFileListProps {
   files: CSVData[];
@@ -7,13 +7,16 @@ interface CSVFileListProps {
   currentPromptId: number | null | undefined;
   onSelectFile: (id: number) => void;
   onDeleteFile: (id: number) => void;
+  onUploadSuccess: (data: CSVData) => void;
 }
 
-export default function CSVFileList({ files, selectedFileId, currentPromptId, onSelectFile, onDeleteFile }: CSVFileListProps) {
+export default function CSVFileList({ files, selectedFileId, currentPromptId, onSelectFile, onDeleteFile, onUploadSuccess }: CSVFileListProps) {
   const [openMenuFileId, setOpenMenuFileId] = useState<number | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const menuRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const buttonRefs = useRef<{ [key: number]: HTMLButtonElement | null }>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -77,17 +80,28 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
     }
   };
 
-  if (files.length === 0) {
-    return (
-      <div style={{ 
-        borderBottom: '2px solid #ddd',
-        paddingBottom: '0.5rem',
-        marginBottom: '1rem'
-      }}>
-        <div style={{ color: '#666', fontSize: '0.9rem' }}>No files uploaded yet</div>
-      </div>
-    );
-  }
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const data = await uploadCSV(file);
+      onUploadSuccess(data);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  }, [onUploadSuccess]);
 
   return (
     <div style={{ 
@@ -99,9 +113,52 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
         gap: '0.25rem',
         overflowX: 'auto',
         paddingBottom: '0.5rem',
+        alignItems: 'center',
       }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          onChange={handleFileChange}
+          disabled={uploading}
+          style={{ display: 'none' }}
+        />
+        <button
+          onClick={handleUploadClick}
+          disabled={uploading}
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: '#f5f5f5',
+            color: '#333',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: uploading ? 'not-allowed' : 'pointer',
+            opacity: uploading ? 0.6 : 1,
+            fontSize: '1.2rem',
+            fontWeight: 'bold',
+            transition: 'background-color 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minWidth: '2.5rem',
+            height: '2rem',
+          }}
+          onMouseEnter={(e) => {
+            if (!uploading) {
+              e.currentTarget.style.backgroundColor = '#e0e0e0';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!uploading) {
+              e.currentTarget.style.backgroundColor = '#f5f5f5';
+            }
+          }}
+          title={uploading ? 'Uploading...' : 'Upload CSV file'}
+        >
+          {uploading ? '⋯' : '+'}
+        </button>
         {files.map((file) => (
-          <div
+            <div
             key={file.id}
             style={{
               position: 'relative',

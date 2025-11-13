@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, startTransition } from 'react';
 import { CSVDataWithRows, getEvaluationsForCSV, Evaluation, Prompt, updateEvaluation, getEvaluationForRow } from '../services/api';
-import { LLMConfig } from './LLMConfigPanel';
+import { LLMConfig } from './PromptEditor';
 
 interface DataTableProps {
   data: CSVDataWithRows | null;
