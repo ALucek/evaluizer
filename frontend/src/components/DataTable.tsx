@@ -151,37 +151,47 @@ export default function DataTable({
   useEffect(() => {
     if (data?.id) {
       processedEvaluationIds.current.clear(); // Reset processed IDs when data changes
-      getEvaluationsForCSV(data.id).then(evals => {
-        const evalMap: { [key: number]: Evaluation } = {};
-        evals.forEach(evaluation => {
-          evalMap[evaluation.csv_row_id] = evaluation;
+      getEvaluationsForCSV(data.id)
+        .then((evals) => {
+          const evalMap: { [key: number]: Evaluation } = {};
+          evals.forEach((evaluation) => {
+            evalMap[evaluation.csv_row_id] = evaluation;
+          });
+          setEvaluations(evalMap);
+
+          // Initialize local row data from evaluations, preserving existing local data if it exists
+          setLocalRowData((prevLocalData) => {
+            const initialData: { [key: number]: any } = {};
+            data.rows.forEach((row) => {
+              const evaluation = evalMap[row.id];
+              const existingLocal = prevLocalData[row.id] || {};
+              initialData[row.id] = {
+                annotation: existingLocal.annotation ?? evaluation?.annotation ?? null,
+                feedback: existingLocal.feedback ?? evaluation?.feedback ?? '',
+                output: existingLocal.output ?? evaluation?.output ?? '',
+              };
+            });
+            return initialData;
+          });
+        })
+        .catch((err) => {
+          console.error('Failed to load evaluations:', err);
+          // Initialize with empty evaluations
+          setLocalRowData((prevLocalData) => {
+            const initialData: { [key: number]: any } = {};
+            if (data?.rows) {
+              data.rows.forEach((row) => {
+                const existingLocal = prevLocalData[row.id] || {};
+                initialData[row.id] = {
+                  annotation: existingLocal.annotation ?? null,
+                  feedback: existingLocal.feedback ?? '',
+                  output: existingLocal.output ?? '',
+                };
+              });
+            }
+            return initialData;
+          });
         });
-        setEvaluations(evalMap);
-        
-        // Initialize local row data from evaluations
-        const initialData: { [key: number]: any } = {};
-        data.rows.forEach(row => {
-          const evaluation = evalMap[row.id];
-          initialData[row.id] = {
-            annotation: evaluation?.annotation ?? null,
-            feedback: evaluation?.feedback ?? "",
-            output: evaluation?.output ?? "",
-          };
-        });
-        setLocalRowData(initialData);
-      }).catch(err => {
-        console.error('Failed to load evaluations:', err);
-        // Initialize with empty evaluations
-        const initialData: { [key: number]: any } = {};
-        data.rows.forEach(row => {
-          initialData[row.id] = {
-            annotation: null,
-            feedback: "",
-            output: "",
-          };
-        });
-        setLocalRowData(initialData);
-      });
     }
   }, [data?.id]);
 
@@ -566,16 +576,24 @@ export default function DataTable({
 
   const handleFeedbackChange = (rowId: number, value: string, e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    setLocalRowData(prev => ({
-      ...prev,
-      [rowId]: { ...prev[rowId], feedback: value }
-    }));
+    setLocalRowData(prev => {
+      // Ensure the existing row data is preserved, especially the annotation
+      const existingRowData = prev[rowId] || {};
+      return {
+        ...prev,
+        [rowId]: {
+          ...existingRowData,
+          feedback: value,
+        },
+      };
+    });
   };
 
   const handleFeedbackBlur = async (rowId: number) => {
     if (onUpdateRow) {
       try {
-        await onUpdateRow(rowId, undefined, localRowData[rowId]?.feedback);
+        // Also pass the current annotation state when updating feedback
+        await onUpdateRow(rowId, localRowData[rowId]?.annotation, localRowData[rowId]?.feedback);
         // Sync back from DB to ensure consistency
         const updatedEval = await getEvaluationForRow(rowId);
         if (updatedEval) {
@@ -617,7 +635,8 @@ export default function DataTable({
       e.stopPropagation();
       if (onUpdateRow) {
         try {
-          await onUpdateRow(rowId, undefined, localRowData[rowId]?.feedback);
+          // Also pass the current annotation state when updating feedback
+          await onUpdateRow(rowId, localRowData[rowId]?.annotation, localRowData[rowId]?.feedback);
           // Sync back from DB to ensure consistency
           const updatedEval = await getEvaluationForRow(rowId);
           if (updatedEval) {
