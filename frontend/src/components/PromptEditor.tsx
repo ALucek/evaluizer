@@ -20,11 +20,14 @@ interface PromptEditorProps {
   llmConfig: LLMConfig;
   onLLMConfigChange: (config: LLMConfig) => void;
   onRunAll?: () => Promise<void>;
+  onCancel?: () => void;
   isRunning?: boolean;
+  isRunningAll?: boolean;
+  isCancelling?: boolean;
   error?: string | null;
 }
 
-export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, isRunning = false, error }: PromptEditorProps) {
+export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, onCancel, isRunning = false, isRunningAll = false, isCancelling = false, error }: PromptEditorProps) {
   const [value, setValue] = useState(prompt?.content || '');
   const [promptName, setPromptName] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
@@ -434,51 +437,90 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
       )}
 
-      {/* Run All Button */}
+      {/* Run All Button / Cancel Button */}
       {onRunAll && (
         <div>
-          <button
-            onClick={async () => {
-              if (onRunAll) {
-                try {
-                  await onRunAll();
-                } catch (err) {
-                  // Error handling is done in parent component
+          {isRunningAll && onCancel ? (
+            <button
+              onClick={() => {
+                if (onCancel) {
+                  onCancel();
                 }
-              }
-            }}
-            disabled={isRunning || !validation.isValid || !prompt}
-            style={{
-              width: '100%',
-              padding: '0.75rem 1rem',
-              backgroundColor: (isRunning || !validation.isValid || !prompt) ? '#d1d5db' : '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: '500',
-              transition: 'all 0.15s ease',
-              boxShadow: (isRunning || !validation.isValid || !prompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isRunning && validation.isValid && prompt) {
-                e.currentTarget.style.backgroundColor = '#059669';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isRunning && validation.isValid && prompt) {
-                e.currentTarget.style.backgroundColor = '#10b981';
-                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
-              } else {
-                e.currentTarget.style.backgroundColor = '#d1d5db';
-                e.currentTarget.style.boxShadow = 'none';
-              }
-            }}
-          >
-            {isRunning ? 'Running...' : 'Run All Rows'}
-          </button>
+              }}
+              disabled={isCancelling}
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                backgroundColor: isCancelling ? '#6c757d' : '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: isCancelling ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                transition: 'all 0.15s ease',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                opacity: isCancelling ? 0.8 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isCancelling) {
+                  e.currentTarget.style.backgroundColor = '#c82333';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isCancelling) {
+                  e.currentTarget.style.backgroundColor = '#dc3545';
+                  e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+                }
+              }}
+            >
+              {isCancelling ? 'Cancelling...' : 'Cancel Running'}
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                if (onRunAll) {
+                  try {
+                    await onRunAll();
+                  } catch (err) {
+                    // Error handling is done in parent component
+                  }
+                }
+              }}
+              disabled={isRunning || !validation.isValid || !prompt}
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                backgroundColor: (isRunning || !validation.isValid || !prompt) ? '#d1d5db' : '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                transition: 'all 0.15s ease',
+                boxShadow: (isRunning || !validation.isValid || !prompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isRunning && validation.isValid && prompt) {
+                  e.currentTarget.style.backgroundColor = '#059669';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRunning && validation.isValid && prompt) {
+                  e.currentTarget.style.backgroundColor = '#10b981';
+                  e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }
+              }}
+            >
+              {isRunning ? 'Running...' : 'Run All Rows'}
+            </button>
+          )}
         </div>
       )}
 

@@ -24,8 +24,10 @@ function App() {
   });
   const [isRunning, setIsRunning] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [latestEvaluation, setLatestEvaluation] = useState<Evaluation | null>(null);
   const [clearAllOutputs, setClearAllOutputs] = useState(false);
+  const cancellationRef = useRef<boolean>(false);
 
   const loadCSVFiles = async (): Promise<CSVData[]> => {
     try {
@@ -335,6 +337,10 @@ function App() {
     const promptContentToUse = currentPromptContent || currentPrompt.content;
 
     const isAllRows = clearOutputsFirst && rowIds.length === csvData.rows.length;
+    
+    // Reset cancellation flag at the start
+    cancellationRef.current = false;
+    
     setIsRunning(true);
     setIsRunningAll(isAllRows);
     setError(null);
@@ -343,6 +349,11 @@ function App() {
     try {
       // Clear outputs, annotations, and feedback first if requested (for "Run All" scenario)
       if (clearOutputsFirst) {
+        // Check for cancellation before clearing
+        if (cancellationRef.current) {
+          return;
+        }
+        
         // Immediately update UI to show cleared outputs
         setClearAllOutputs(true);
         
@@ -368,8 +379,18 @@ function App() {
 
       // Process each batch in parallel, but batches sequentially
       for (const batch of batches) {
+        // Check for cancellation before processing each batch
+        if (cancellationRef.current) {
+          break;
+        }
+        
         // Process all rows in this batch concurrently
         const batchPromises = batch.map(async (rowId) => {
+          // Check cancellation before each individual request
+          if (cancellationRef.current) {
+            return { success: false, rowId, error: new Error('Cancelled') };
+          }
+          
           try {
             const evaluation = await runPrompt({
               promptId: currentPrompt.id,
@@ -387,6 +408,10 @@ function App() {
             
             return { success: true, rowId, evaluation };
           } catch (err) {
+            // Don't set error if cancelled
+            if (cancellationRef.current) {
+              return { success: false, rowId, error: new Error('Cancelled') };
+            }
             const errorMessage = err instanceof Error ? err.message : `Failed to run prompt for row ${rowId}`;
             setError(errorMessage);
             return { success: false, rowId, error: err };
@@ -395,12 +420,22 @@ function App() {
 
         // Wait for all rows in this batch to complete (or fail)
         await Promise.allSettled(batchPromises);
+        
+        // Check cancellation after batch completes
+        if (cancellationRef.current) {
+          break;
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run prompts');
+      // Don't set error if cancelled
+      if (!cancellationRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to run prompts');
+      }
     } finally {
       setIsRunning(false);
       setIsRunningAll(false);
+      setIsCancelling(false);
+      cancellationRef.current = false; // Reset cancellation flag
       // Clear latestEvaluation after a brief delay to allow last update to process
       // But don't reload all data - incremental updates are already handled
       setTimeout(() => {
@@ -417,6 +452,11 @@ function App() {
     
     const allRowIds = csvData.rows.map(row => row.id);
     await handleRunPrompt(allRowIds, true);
+  };
+
+  const handleCancel = () => {
+    cancellationRef.current = true;
+    setIsCancelling(true);
   };
 
   const currentColumns = csvData?.columns || [];
@@ -478,7 +518,10 @@ function App() {
               llmConfig={llmConfig}
               onLLMConfigChange={setLlmConfig}
               onRunAll={handleRunAll}
+              onCancel={handleCancel}
               isRunning={isRunning}
+              isRunningAll={isRunningAll}
+              isCancelling={isCancelling}
               error={error}
             />
           ) : (
