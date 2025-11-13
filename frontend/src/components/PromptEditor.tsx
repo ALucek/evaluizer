@@ -1164,7 +1164,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                             e.currentTarget.style.opacity = '1';
                             e.currentTarget.style.outline = prompt?.id === v.id 
                               ? '2px solid rgba(255, 255, 255, 0.8)' 
-                              : '2px solid var(--accent-primary)';
+                              : '2px solid var(--accent-danger)';
                             e.currentTarget.style.outlineOffset = '-2px';
                           }}
                           onMouseLeave={(e) => {
