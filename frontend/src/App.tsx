@@ -14,7 +14,6 @@ function App() {
   const [promptVersions, setPromptVersions] = useState<Prompt[]>([]);
   const [groupedPrompts, setGroupedPrompts] = useState<Record<string, Prompt[]>>({});
   const [loading, setLoading] = useState(false);
-  const [loadingFileId, setLoadingFileId] = useState<number | null>(null); // Track which file is loading
   const [error, setError] = useState<string | null>(null);
   const selectedFileIdRef = useRef<number | null>(null);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
@@ -45,7 +44,6 @@ function App() {
     if (isInitialLoad) {
       setLoading(true);
     }
-    setLoadingFileId(id);
     setError(null);
     try {
       const data = await getCSVData(id);
@@ -57,7 +55,6 @@ function App() {
       setError(err instanceof Error ? err.message : 'Failed to load CSV data');
     } finally {
       setLoading(false);
-      setLoadingFileId(prev => prev === id ? null : prev);
     }
   };
 

@@ -405,7 +405,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
       )}
 
-
       {/* Warning and Error Messages */}
       {!validation.isValid && (
         <div style={{
