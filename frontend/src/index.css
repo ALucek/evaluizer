@@ -80,6 +80,24 @@ body {
   background: var(--text-tertiary);
 }
 
+::-webkit-scrollbar-corner {
+  background: var(--bg-secondary);
+}
+
+textarea::-webkit-resizer {
+  background-color: var(--bg-secondary);
+  border: none;
+  box-shadow:
+    inset -1px 0 0 var(--border-accent),
+    inset 0 -1px 0 var(--border-accent);
+}
+
+textarea::-webkit-resizer:hover {
+  box-shadow:
+    inset -1px 0 0 var(--accent-primary),
+    inset 0 -1px 0 var(--accent-primary);
+}
+
 /* Hide scrollbar for highlight overlay in PromptEditor */
 .highlight-overlay {
   scrollbar-width: none; /* Firefox */
