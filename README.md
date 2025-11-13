@@ -21,3 +21,5 @@ tech debt in frontend
 logo
 
 readme
+
+favicon
