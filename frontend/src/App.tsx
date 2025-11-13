@@ -544,57 +544,61 @@ function App() {
               <div style={{
                 padding: '1.5rem',
                 border: '1px solid var(--border-primary)',
-                borderRadius: '12px',
+                borderRadius: '0',
                 backgroundColor: 'var(--bg-elevated)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1rem',
               }}>
                 <div>
-                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Prompt Template</h2>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>
-                    Select a CSV file to start creating prompts
+                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT TEMPLATE</h2>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    SELECT A CSV FILE TO START CREATING PROMPTS
                   </p>
                 </div>
                 <div style={{
                   minHeight: '200px',
                   border: '1px dashed var(--border-secondary)',
-                  borderRadius: '8px',
+                  borderRadius: '0',
                   backgroundColor: 'var(--bg-secondary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: 'var(--text-tertiary)',
-                  fontSize: '0.875rem',
+                  fontSize: '0.75rem',
+                  fontFamily: 'monospace',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
                 }}>
-                  Prompt editor will appear here
+                  PROMPT EDITOR WILL APPEAR HERE
                 </div>
               </div>
 
               {/* LLM Config Placeholder */}
               <div style={{
                 border: '1px solid var(--border-primary)',
-                borderRadius: '12px',
+                borderRadius: '0',
                 backgroundColor: 'var(--bg-elevated)',
                 overflow: 'hidden',
               }}>
                 <div style={{
-                  padding: '0.875rem 1.25rem',
+                  padding: '0.5rem 1rem',
                   backgroundColor: 'var(--bg-tertiary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   borderBottom: '1px solid var(--border-primary)',
                 }}>
-                  <div style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--text-secondary)' }}>
-                    LLM Configuration
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    LLM CONFIGURATION
                   </div>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>▶</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>▶</span>
                 </div>
-                <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
+                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
                 </div>
               </div>
             </>
@@ -632,9 +636,13 @@ function App() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'var(--text-tertiary)',
-                fontSize: '0.875rem',
+                fontSize: '0.75rem',
+                fontFamily: 'monospace',
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
               }}>
-                Loading...
+                LOADING...
               </div>
             ) : csvData ? (
               <DataTable 
@@ -659,9 +667,14 @@ function App() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'var(--text-tertiary)',
+                fontFamily: 'monospace',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
               }}>
-                <div style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                  Click the <strong style={{ color: 'var(--text-secondary)' }}>+</strong> button above to upload a CSV file
+                <div>
+                  CLICK THE <strong style={{ color: 'var(--text-secondary)' }}>+</strong> BUTTON ABOVE TO UPLOAD A CSV FILE
                 </div>
               </div>
             )}

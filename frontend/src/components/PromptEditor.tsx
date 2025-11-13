@@ -305,7 +305,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         ref={textareaRef}
         value={value}
         onChange={handleChange}
-        placeholder="Enter your prompt template here...&#10;Example: Analyze the following: {{question}}"
+        placeholder="ENTER YOUR PROMPT TEMPLATE HERE...&#10;EXAMPLE: ANALYZE THE FOLLOWING: {{QUESTION}}"
         style={{
           width: '100%',
           minHeight: '200px',
@@ -344,7 +344,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 type="text"
                 value={promptName}
                 onChange={(e) => setPromptName(e.target.value)}
-                placeholder="e.g., Main Prompt, Experiment A..."
+                placeholder="E.G., MAIN PROMPT, EXPERIMENT A..."
                 style={{
                   width: '100%',
                   padding: '0.5rem 0.75rem',
@@ -582,15 +582,18 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
       {/* LLM Configuration Section - Collapsible */}
       <div style={{
-        border: '1px solid var(--border-primary)',
         borderRadius: '0',
+        paddingRight: '-5px',
         backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}>
         <div
           onClick={() => setIsLLMConfigExpanded(!isLLMConfigExpanded)}
           style={{
-            padding: '0.5rem 1rem',
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem',
+            paddingLeft: '1rem',
+            paddingRight: '1rem',
             backgroundColor: 'var(--bg-tertiary)',
             borderBottom: isLLMConfigExpanded ? '1px solid var(--border-primary)' : 'none',
             cursor: 'pointer',
@@ -598,7 +601,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             alignItems: 'center',
             justifyContent: 'space-between',
             userSelect: 'none',
-            transition: 'none',
+            boxSizing: 'border-box',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.outline = '2px solid var(--accent-primary)';
@@ -617,7 +620,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
         
         {isLLMConfigExpanded && (
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ paddingTop: '1rem', paddingBottom: '1rem', paddingLeft: '1rem', paddingRight: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxSizing: 'border-box' }}>
             {/* Model ID Input */}
             <div>
               <label style={{
@@ -637,7 +640,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 value={localLLMConfig.model}
                 onChange={(e) => handleModelChange(e.target.value)}
                 disabled={isRunning}
-                placeholder="e.g., gpt-4, azure/gpt-4, gemini/gemini-pro, vertex_ai/gemini-pro"
+                placeholder="E.G., GPT-4, AZURE/GPT-4, GEMINI/GEMINI-PRO, VERTEX_AI/GEMINI-PRO"
                 style={{
                   width: '100%',
                   padding: '0.5rem 0.75rem',
@@ -887,15 +890,16 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
       {/* Prompt Versioning Section - Collapsible */}
       <div style={{
-        border: '1px solid var(--border-primary)',
-        borderRadius: '0',
         backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}>
         <div
           onClick={() => setIsVersioningExpanded(!isVersioningExpanded)}
           style={{
-            padding: '0.5rem 1rem',
+            paddingTop: '0.5rem',
+            paddingBottom: '0.5rem',
+            paddingLeft: '1rem',
+            paddingRight: '1rem',
             backgroundColor: 'var(--bg-tertiary)',
             borderBottom: isVersioningExpanded ? '1px solid var(--border-primary)' : 'none',
             cursor: 'pointer',
@@ -903,7 +907,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             alignItems: 'center',
             justifyContent: 'space-between',
             userSelect: 'none',
-            transition: 'none',
+            boxSizing: 'border-box',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.outline = '2px solid var(--accent-primary)';
@@ -922,7 +926,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
         
         {isVersioningExpanded && (
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ paddingTop: '1rem', paddingBottom: '1rem', paddingLeft: '1rem', paddingRight: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxSizing: 'border-box' }}>
             {/* Prompt Selector */}
             {allPromptNames.length > 0 && (
               <div>
@@ -1189,7 +1193,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     type="text"
                     value={commitMessage}
                     onChange={(e) => setCommitMessage(e.target.value)}
-                    placeholder="e.g., Fixed typo, Improved clarity..."
+                    placeholder="E.G., FIXED TYPO, IMPROVED CLARITY..."
                     style={{
                       width: '100%',
                       padding: '0.5rem 0.75rem',

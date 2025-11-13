@@ -107,7 +107,7 @@ export default function LLMConfigPanel({
           value={localConfig.model}
           onChange={(e) => handleModelChange(e.target.value)}
           disabled={isRunning}
-          placeholder="e.g., gpt-4, azure/gpt-4, gemini/gemini-pro, vertex_ai/gemini-pro"
+          placeholder="E.G., GPT-4, AZURE/GPT-4, GEMINI/GEMINI-PRO, VERTEX_AI/GEMINI-PRO"
           style={{
             width: '100%',
             padding: '0.625rem 0.75rem',

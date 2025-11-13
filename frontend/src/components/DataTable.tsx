@@ -335,8 +335,13 @@ export default function DataTable({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        fontFamily: 'monospace',
+        fontSize: '0.75rem',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
       }}>
-        No data selected. Select a file tab above to view data.
+        NO DATA SELECTED. SELECT A FILE TAB ABOVE TO VIEW DATA.
       </div>
     );
   }
@@ -351,8 +356,13 @@ export default function DataTable({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        fontFamily: 'monospace',
+        fontSize: '0.75rem',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
       }}>
-        No rows found in this CSV file.
+        NO ROWS FOUND IN THIS CSV FILE.
       </div>
     );
   }
@@ -1012,7 +1022,7 @@ export default function DataTable({
             onBlur={() => handleFeedbackBlur(rowId)}
             onKeyDown={(e) => handleFeedbackKeyDown(rowId, e)}
             onClick={(e) => e.stopPropagation()}
-            placeholder="Enter feedback..."
+            placeholder="ENTER FEEDBACK..."
             style={{
               width: '100%',
               padding: '0.25rem 0.5rem',
@@ -1063,7 +1073,7 @@ export default function DataTable({
             }
           }}
         >
-          {feedbackValue || (isDisabled ? "—" : "Click to add feedback...")}
+          {feedbackValue || (isDisabled ? "—" : "CLICK TO ADD FEEDBACK...")}
         </div>
       );
     }
@@ -1392,6 +1402,8 @@ export default function DataTable({
                   {allColumns.map((column) => {
                     const isEvalColumn = EVAL_COLUMNS.includes(column);
                     const isFeedbackColumn = column === "Feedback";
+                    const isOutputColumn = column === "Output";
+                    const isAnnotationColumn = column === "Annotation";
                     const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : 120);
                     return (
                       <td
@@ -1402,7 +1414,7 @@ export default function DataTable({
                           textOverflow: isExpanded || isFeedbackColumn ? 'clip' : 'ellipsis',
                           whiteSpace: (isExpanded && !isEvalColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
                           wordBreak: (isExpanded || isFeedbackColumn) ? 'break-word' : 'normal',
-                          verticalAlign: 'top',
+                          verticalAlign: (isOutputColumn || isAnnotationColumn) ? 'middle' : 'top',
                           width: `${columnWidth}px`,
                           minWidth: `${columnWidth}px`,
                           maxWidth: `${columnWidth}px`,
