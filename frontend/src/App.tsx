@@ -574,33 +574,6 @@ function App() {
                   PROMPT EDITOR WILL APPEAR HERE
                 </div>
               </div>
-
-              {/* LLM Config Placeholder */}
-              <div style={{
-                border: '1px solid var(--border-primary)',
-                borderRadius: '0',
-                backgroundColor: 'var(--bg-elevated)',
-                overflow: 'hidden',
-              }}>
-                <div style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  borderBottom: '1px solid var(--border-primary)',
-                }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    LLM CONFIGURATION
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>▶</span>
-                </div>
-                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
-                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '0', border: '1px dashed var(--border-secondary)' }}></div>
-                </div>
-              </div>
             </>
           )}
         </div>
