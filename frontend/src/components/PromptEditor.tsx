@@ -243,30 +243,30 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         }
       `}</style>
       <div style={{
-        padding: '0.75rem 1.5rem 1.5rem 1.5rem',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        backgroundColor: '#fafafa',
+        padding: '1rem 1.5rem',
+        border: '1px solid var(--border-primary)',
+        borderRadius: '0',
+        backgroundColor: 'var(--bg-elevated)',
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
       }}>
       <div>
-        <h2 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Prompt Template</h2>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
-          Use <code style={{ backgroundColor: '#fff3cd', padding: '2px 4px', borderRadius: '3px' }}>{'{{column_name}}'}</code> to insert column values
+        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT TEMPLATE</h2>
+        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+          USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO INSERT COLUMN VALUES
         </p>
       </div>
 
       {columns.length > 0 && (
         <div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>
-            Available Columns:
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            AVAILABLE COLUMNS:
           </div>
           <div style={{
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '0.5rem',
+            gap: '0.375rem',
           }}>
             {columns.map((col) => (
               <button
@@ -274,18 +274,23 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 onClick={() => insertVariable(col)}
                 style={{
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: '#e9ecef',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px',
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
                   cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  color: '#495057',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-primary)',
+                  fontWeight: '700',
+                  fontFamily: 'monospace',
+                  transition: 'none',
+                  textTransform: 'uppercase',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#d0d7de';
+                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                  e.currentTarget.style.outlineOffset = '-2px';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#e9ecef';
+                  e.currentTarget.style.outline = 'none';
                 }}
               >
                 {col}
@@ -305,14 +310,24 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
           width: '100%',
           minHeight: '200px',
           padding: '0.75rem',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          fontSize: '0.9rem',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '0',
+          fontSize: '0.8125rem',
           fontFamily: 'monospace',
-          lineHeight: '1.5',
+          lineHeight: '1.4',
           boxSizing: 'border-box',
           resize: 'vertical',
           outline: 'none',
+          backgroundColor: 'var(--bg-secondary)',
+          color: 'var(--text-primary)',
+          fontWeight: '500',
+          transition: 'none',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = 'var(--accent-primary)';
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border-primary)';
         }}
       />
 
@@ -322,7 +337,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
           {/* Prompt Name Input - Only show when creating a new prompt */}
           {(showNewPromptForm || (!prompt && allPromptNames.length === 0)) && (
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
                 Prompt Name (required):
               </label>
               <input
@@ -333,10 +348,21 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 style={{
                   width: '100%',
                   padding: '0.5rem 0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  fontSize: '0.9rem',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
+                  fontSize: '0.8125rem',
                   boxSizing: 'border-box',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  fontWeight: '600',
+                  transition: 'none',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-primary)';
                 }}
               />
             </div>
@@ -354,17 +380,27 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   }
                 }}
                 style={{
-                  padding: '0.75rem 1rem',
-                  backgroundColor: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
                   cursor: 'pointer',
-                  fontSize: '1rem',
-                  fontWeight: '500',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  fontFamily: 'monospace',
+                  transition: 'none',
+                  textTransform: 'uppercase',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.outline = 'none';
                 }}
               >
-                Cancel
+                CANCEL
               </button>
             )}
             <button
@@ -372,18 +408,32 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               disabled={isSaving || !validation.isValid || !promptName.trim()}
               style={{
                 flex: 1,
-                padding: '0.75rem 1rem',
-                backgroundColor: (validation.isValid && promptName.trim()) ? '#007bff' : '#6c757d',
+                padding: '0.5rem 1rem',
+                backgroundColor: (validation.isValid && promptName.trim()) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
+                borderRadius: '0',
                 cursor: (isSaving || !validation.isValid || !promptName.trim()) ? 'not-allowed' : 'pointer',
-                fontSize: '1rem',
-                fontWeight: '500',
-                opacity: (isSaving || !validation.isValid || !promptName.trim()) ? 0.6 : 1,
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                opacity: (isSaving || !validation.isValid || !promptName.trim()) ? 0.4 : 1,
+                transition: 'none',
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSaving && validation.isValid && promptName.trim()) {
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSaving && validation.isValid && promptName.trim()) {
+                  e.currentTarget.style.outline = 'none';
+                }
               }}
             >
-              {isSaving ? 'Saving...' : 'Save Prompt'}
+              {isSaving ? 'SAVING...' : 'SAVE PROMPT'}
             </button>
           </div>
         </div>
@@ -394,42 +444,50 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {!validation.isValid && (
             <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#f8d7da',
-              color: '#721c24',
-              borderRadius: '8px',
-              fontSize: '0.875rem',
-              border: '1px solid #f5c6cb',
+              padding: '0.5rem 0.75rem',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--accent-danger)',
+              borderRadius: '0',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              fontFamily: 'monospace',
+              border: '1px solid var(--accent-danger)',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
+              textTransform: 'uppercase',
             }}>
-              <span style={{ fontSize: '1rem' }}>✗</span>
-              <span>{validation.message || 'Invalid prompt template'}</span>
+              <span>ERROR: {validation.message || 'INVALID PROMPT TEMPLATE'}</span>
             </div>
           )}
           
           {(!prompt || !validation.isValid) && (
             <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              borderRadius: '8px',
-              fontSize: '0.875rem',
-              border: '1px solid #fde68a',
+              padding: '0.5rem 0.75rem',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--accent-warning)',
+              borderRadius: '0',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              fontFamily: 'monospace',
+              border: '1px solid var(--accent-warning)',
+              textTransform: 'uppercase',
             }}>
-              ⚠️ Save a valid prompt template before running
+              WARNING: SAVE A VALID PROMPT TEMPLATE BEFORE RUNNING
             </div>
           )}
           
           {error && (
             <div style={{
-              padding: '0.75rem',
-              backgroundColor: '#fee2e2',
-              color: '#991b1b',
-              borderRadius: '8px',
-              fontSize: '0.875rem',
-              border: '1px solid #fecaca',
+              padding: '0.5rem 0.75rem',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--accent-danger)',
+              borderRadius: '0',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              fontFamily: 'monospace',
+              border: '1px solid var(--accent-danger)',
+              textTransform: 'uppercase',
             }}>
               {error}
             </div>
@@ -450,32 +508,32 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               disabled={isCancelling}
               style={{
                 width: '100%',
-                padding: '0.75rem 1rem',
-                backgroundColor: isCancelling ? '#6c757d' : '#dc3545',
+                padding: '0.5rem 1rem',
+                backgroundColor: isCancelling ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '0',
                 cursor: isCancelling ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                transition: 'all 0.15s ease',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                opacity: isCancelling ? 0.8 : 1,
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                opacity: isCancelling ? 0.5 : 1,
+                textTransform: 'uppercase',
               }}
               onMouseEnter={(e) => {
                 if (!isCancelling) {
-                  e.currentTarget.style.backgroundColor = '#c82333';
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isCancelling) {
-                  e.currentTarget.style.backgroundColor = '#dc3545';
-                  e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
+                  e.currentTarget.style.outline = 'none';
                 }
               }}
             >
-              {isCancelling ? 'Cancelling...' : 'Cancel Running'}
+              {isCancelling ? 'CANCELLING...' : 'CANCEL RUNNING'}
             </button>
           ) : (
             <button
@@ -491,34 +549,32 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               disabled={isRunning || !validation.isValid || !prompt}
               style={{
                 width: '100%',
-                padding: '0.75rem 1rem',
-                backgroundColor: (isRunning || !validation.isValid || !prompt) ? '#d1d5db' : '#10b981',
-                color: 'white',
+                padding: '0.5rem 1rem',
+                backgroundColor: (isRunning || !validation.isValid || !prompt) ? 'var(--bg-tertiary)' : 'var(--accent-success)',
+                color: (isRunning || !validation.isValid || !prompt) ? 'var(--text-tertiary)' : '#000000',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '0',
                 cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                transition: 'all 0.15s ease',
-                boxShadow: (isRunning || !validation.isValid || !prompt) ? 'none' : '0 1px 2px rgba(0, 0, 0, 0.05)',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                opacity: (isRunning || !validation.isValid || !prompt) ? 0.4 : 1,
+                textTransform: 'uppercase',
               }}
               onMouseEnter={(e) => {
                 if (!isRunning && validation.isValid && prompt) {
-                  e.currentTarget.style.backgroundColor = '#059669';
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isRunning && validation.isValid && prompt) {
-                  e.currentTarget.style.backgroundColor = '#10b981';
-                  e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
-                } else {
-                  e.currentTarget.style.backgroundColor = '#d1d5db';
-                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.outline = 'none';
                 }
               }}
             >
-              {isRunning ? 'Running...' : 'Run All Rows'}
+              {isRunning ? 'RUNNING...' : 'RUN ALL ROWS'}
             </button>
           )}
         </div>
@@ -526,35 +582,37 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
       {/* LLM Configuration Section - Collapsible */}
       <div style={{
-        border: '1px solid #dee2e6',
-        borderRadius: '6px',
-        backgroundColor: '#fff',
+        border: '1px solid var(--border-primary)',
+        borderRadius: '0',
+        backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}>
         <div
           onClick={() => setIsLLMConfigExpanded(!isLLMConfigExpanded)}
           style={{
-            padding: '0.75rem 1rem',
-            backgroundColor: '#f8f9fa',
-            borderBottom: isLLMConfigExpanded ? '1px solid #dee2e6' : 'none',
+            padding: '0.5rem 1rem',
+            backgroundColor: 'var(--bg-tertiary)',
+            borderBottom: isLLMConfigExpanded ? '1px solid var(--border-primary)' : 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             userSelect: 'none',
+            transition: 'none',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#e9ecef';
+            e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+            e.currentTarget.style.outlineOffset = '-2px';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#f8f9fa';
+            e.currentTarget.style.outline = 'none';
           }}
         >
-          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#495057' }}>
-            LLM Configuration
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            LLM CONFIGURATION
           </div>
-          <span style={{ fontSize: '1rem', color: '#6c757d' }}>
-            {isLLMConfigExpanded ? '▼' : '▶'}
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+            {isLLMConfigExpanded ? 'v' : '>'}
           </span>
         </div>
         
@@ -564,12 +622,15 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             <div>
               <label style={{
                 display: 'block',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                marginBottom: '0.5rem',
-                color: '#374151',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                marginBottom: '0.375rem',
+                color: 'var(--text-tertiary)',
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
               }}>
-                Model ID
+                MODEL ID
               </label>
               <input
                 type="text"
@@ -579,22 +640,33 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 placeholder="e.g., gpt-4, azure/gpt-4, gemini/gemini-pro, vertex_ai/gemini-pro"
                 style={{
                   width: '100%',
-                  padding: '0.625rem 0.75rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  fontSize: '0.875rem',
-                  backgroundColor: isRunning ? '#f9fafb' : 'white',
-                  color: '#111827',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
+                  fontSize: '0.8125rem',
+                  backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
                   fontFamily: 'monospace',
+                  fontWeight: '600',
                   boxSizing: 'border-box',
+                  transition: 'none',
+                }}
+                onFocus={(e) => {
+                  if (!isRunning) {
+                    e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                  }
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-primary)';
                 }}
               />
               <p style={{
-                margin: '0.5rem 0 0 0',
-                fontSize: '0.75rem',
-                color: '#6b7280',
+                margin: '0.375rem 0 0 0',
+                fontSize: '0.6875rem',
+                color: 'var(--text-tertiary)',
+                fontFamily: 'monospace',
               }}>
-                Enter any LiteLLM-supported model ID. Examples: gpt-4, azure/your-deployment, gemini/gemini-pro
+                ENTER ANY LITELLM-SUPPORTED MODEL ID. EXAMPLES: GPT-4, AZURE/YOUR-DEPLOYMENT, GEMINI/GEMINI-PRO
               </p>
             </div>
 
@@ -609,7 +681,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 <label style={{
                   fontSize: '0.875rem',
                   fontWeight: '500',
-                  color: '#374151',
+                  color: 'var(--text-secondary)',
                 }}>
                   Temperature
                 </label>
@@ -628,13 +700,15 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   disabled={isRunning}
                   style={{
                     width: '90px',
-                    padding: '0.375rem 0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    backgroundColor: isRunning ? '#f9fafb' : 'white',
+                    padding: '0.25rem 0.5rem',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '0',
+                    fontSize: '0.8125rem',
+                    backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                     textAlign: 'center',
-                    color: '#111827',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '600',
                   }}
                 />
               </div>
@@ -648,9 +722,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 disabled={isRunning}
                 style={{
                   width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: '#e5e7eb',
+                  height: '4px',
+                  borderRadius: '0',
+                  background: 'var(--bg-tertiary)',
                   outline: 'none',
                   cursor: isRunning ? 'not-allowed' : 'pointer',
                 }}
@@ -659,7 +733,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '0.75rem',
-                color: '#9ca3af',
+                color: 'var(--text-tertiary)',
                 marginTop: '0.375rem',
               }}>
                 <span>More focused</span>
@@ -678,7 +752,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 <label style={{
                   fontSize: '0.875rem',
                   fontWeight: '500',
-                  color: '#374151',
+                  color: 'var(--text-secondary)',
                 }}>
                   Max Tokens
                 </label>
@@ -696,13 +770,15 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   disabled={isRunning}
                   style={{
                     width: '90px',
-                    padding: '0.375rem 0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    backgroundColor: isRunning ? '#f9fafb' : 'white',
+                    padding: '0.25rem 0.5rem',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '0',
+                    fontSize: '0.8125rem',
+                    backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                     textAlign: 'center',
-                    color: '#111827',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '600',
                   }}
                 />
               </div>
@@ -716,9 +792,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 disabled={isRunning}
                 style={{
                   width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: '#e5e7eb',
+                  height: '4px',
+                  borderRadius: '0',
+                  background: 'var(--bg-tertiary)',
                   outline: 'none',
                   cursor: isRunning ? 'not-allowed' : 'pointer',
                 }}
@@ -727,7 +803,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '0.75rem',
-                color: '#9ca3af',
+                color: 'var(--text-tertiary)',
                 marginTop: '0.375rem',
               }}>
                 <span>1</span>
@@ -746,7 +822,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 <label style={{
                   fontSize: '0.875rem',
                   fontWeight: '500',
-                  color: '#374151',
+                  color: 'var(--text-secondary)',
                 }}>
                   Concurrency
                 </label>
@@ -765,13 +841,15 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   disabled={isRunning}
                   style={{
                     width: '90px',
-                    padding: '0.375rem 0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem',
-                    backgroundColor: isRunning ? '#f9fafb' : 'white',
+                    padding: '0.25rem 0.5rem',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '0',
+                    fontSize: '0.8125rem',
+                    backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                     textAlign: 'center',
-                    color: '#111827',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '600',
                   }}
                 />
               </div>
@@ -785,9 +863,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 disabled={isRunning}
                 style={{
                   width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: '#e5e7eb',
+                  height: '4px',
+                  borderRadius: '0',
+                  background: 'var(--bg-tertiary)',
                   outline: 'none',
                   cursor: isRunning ? 'not-allowed' : 'pointer',
                 }}
@@ -796,7 +874,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '0.75rem',
-                color: '#9ca3af',
+                color: 'var(--text-tertiary)',
                 marginTop: '0.375rem',
               }}>
                 <span>Sequential (1)</span>
@@ -809,35 +887,37 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
       {/* Prompt Versioning Section - Collapsible */}
       <div style={{
-        border: '1px solid #dee2e6',
-        borderRadius: '6px',
-        backgroundColor: '#fff',
+        border: '1px solid var(--border-primary)',
+        borderRadius: '0',
+        backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}>
         <div
           onClick={() => setIsVersioningExpanded(!isVersioningExpanded)}
           style={{
-            padding: '0.75rem 1rem',
-            backgroundColor: '#f8f9fa',
-            borderBottom: isVersioningExpanded ? '1px solid #dee2e6' : 'none',
+            padding: '0.5rem 1rem',
+            backgroundColor: 'var(--bg-tertiary)',
+            borderBottom: isVersioningExpanded ? '1px solid var(--border-primary)' : 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             userSelect: 'none',
+            transition: 'none',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#e9ecef';
+            e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+            e.currentTarget.style.outlineOffset = '-2px';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#f8f9fa';
+            e.currentTarget.style.outline = 'none';
           }}
         >
-          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#495057' }}>
-            Prompt Versioning
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            PROMPT VERSIONING
           </div>
-          <span style={{ fontSize: '1rem', color: '#6c757d' }}>
-            {isVersioningExpanded ? '▼' : '▶'}
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+            {isVersioningExpanded ? 'v' : '>'}
           </span>
         </div>
         
@@ -847,8 +927,8 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             {allPromptNames.length > 0 && (
               <div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#666', marginRight: '0.25rem', flexShrink: 0 }}>
-                    Prompt:
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-tertiary)', marginRight: '0.25rem', flexShrink: 0, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    PROMPT:
                   </label>
                   <select
                     value={selectedPromptName || ''}
@@ -865,10 +945,13 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     style={{
                       flex: 1,
                       padding: '0.5rem 0.75rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '0.9rem',
-                      backgroundColor: 'white',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: '0',
+                      fontSize: '0.8125rem',
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '600',
                       cursor: 'pointer',
                       minWidth: '150px',
                     }}
@@ -888,16 +971,25 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     }}
                     style={{
                       padding: '0.5rem 0.75rem',
-                      backgroundColor: '#28a745',
-                      color: 'white',
+                      backgroundColor: 'var(--accent-success)',
+                      color: '#000000',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '0',
                       cursor: 'pointer',
                       fontSize: '1rem',
-                      fontWeight: 'bold',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
                       minWidth: '36px',
+                      transition: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.outline = 'none';
                     }}
                     title="New Prompt"
                   >
@@ -925,20 +1017,29 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       }}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        backgroundColor: '#dc3545',
+                        backgroundColor: 'var(--accent-danger)',
                         color: 'white',
                         border: 'none',
-                        borderRadius: '4px',
+                        borderRadius: '0',
                         cursor: 'pointer',
                         fontSize: '1rem',
-                        fontWeight: 'bold',
+                        fontWeight: '700',
+                        fontFamily: 'monospace',
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                         minWidth: '36px',
+                        transition: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                        e.currentTarget.style.outlineOffset = '-2px';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.outline = 'none';
                       }}
                       title="Delete this prompt and all its versions"
                     >
-                      −
+                      X
                     </button>
                   )}
                 </div>
@@ -949,17 +1050,17 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             {selectedPromptName && selectedPromptVersions.length > 0 && (
               <div style={{
                 padding: '0.75rem',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #dee2e6',
-                borderRadius: '6px',
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '0',
               }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.75rem', color: '#495057' }}>
-                  Versions:
+                <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  VERSIONS:
                 </div>
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.25rem',
+                  gap: '0.375rem',
                   maxHeight: '300px',
                   overflowY: 'auto',
                 }}>
@@ -968,17 +1069,19 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       key={v.id}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        backgroundColor: prompt?.id === v.id ? '#007bff' : 'white',
-                        border: `1px solid ${prompt?.id === v.id ? '#007bff' : '#dee2e6'}`,
-                        borderRadius: '4px',
+                        backgroundColor: prompt?.id === v.id ? 'var(--accent-primary)' : 'var(--bg-elevated)',
+                        border: `1px solid ${prompt?.id === v.id ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                        borderRadius: '0',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '0.5rem',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
+                        transition: 'none',
                       }}
-                      onClick={() => {
+                      onClick={(e) => {
+                        // Clear outline on click
+                        e.currentTarget.style.outline = 'none';
                         // If there are unsaved changes, warn the user
                         if (hasUnsavedChanges && prompt?.id !== v.id) {
                           if (!window.confirm('You have unsaved changes. Switching versions will discard them. Continue?')) {
@@ -989,27 +1092,27 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       }}
                       onMouseEnter={(e) => {
                         if (prompt?.id !== v.id) {
-                          e.currentTarget.style.backgroundColor = '#f0f7ff';
+                          e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                          e.currentTarget.style.outlineOffset = '-2px';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (prompt?.id !== v.id) {
-                          e.currentTarget.style.backgroundColor = 'white';
-                        }
+                        e.currentTarget.style.outline = 'none';
                       }}
                     >
                       <div style={{ flex: 1 }}>
                         <div style={{
-                          fontWeight: prompt?.id === v.id ? '600' : '500',
-                          color: prompt?.id === v.id ? 'white' : '#495057',
-                          fontSize: '0.85rem',
+                          fontWeight: prompt?.id === v.id ? '700' : '600',
+                          color: prompt?.id === v.id ? 'white' : 'var(--text-primary)',
+                          fontSize: '0.8125rem',
+                          fontFamily: 'monospace',
                         }}>
-                          v{v.version}
+                          V{v.version}
                         </div>
                         {v.commit_message && (
                           <div style={{
                             fontSize: '0.75rem',
-                            color: prompt?.id === v.id ? 'rgba(255,255,255,0.9)' : '#6c757d',
+                            color: prompt?.id === v.id ? 'rgba(255,255,255,0.9)' : 'var(--text-tertiary)',
                             marginTop: '0.25rem',
                             fontStyle: 'italic',
                           }}>
@@ -1019,7 +1122,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         {v.created_at && (
                           <div style={{
                             fontSize: '0.7rem',
-                            color: prompt?.id === v.id ? 'rgba(255,255,255,0.7)' : '#adb5bd',
+                            color: prompt?.id === v.id ? 'rgba(255,255,255,0.7)' : 'var(--text-tertiary)',
                             marginTop: '0.15rem',
                           }}>
                             {new Date(v.created_at).toLocaleString()}
@@ -1041,25 +1144,32 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                           style={{
                             padding: '0.25rem 0.5rem',
                             backgroundColor: prompt?.id === v.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                            color: prompt?.id === v.id ? 'white' : '#dc3545',
-                            border: `1px solid ${prompt?.id === v.id ? 'rgba(255,255,255,0.3)' : '#dc3545'}`,
-                            borderRadius: '3px',
+                            color: prompt?.id === v.id ? 'white' : 'var(--accent-danger)',
+                            border: `1px solid ${prompt?.id === v.id ? 'rgba(255,255,255,0.3)' : 'var(--accent-danger)'}`,
+                            borderRadius: '0',
                             cursor: 'pointer',
-                            fontSize: '0.75rem',
+                            fontSize: '0.6875rem',
+                            fontWeight: '700',
+                            fontFamily: 'monospace',
                             whiteSpace: 'nowrap',
                             opacity: 0.8,
+                            transition: 'none',
+                            textTransform: 'uppercase',
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.opacity = '1';
-                            e.currentTarget.style.backgroundColor = prompt?.id === v.id ? 'rgba(255,255,255,0.3)' : '#fee';
+                            e.currentTarget.style.outline = prompt?.id === v.id 
+                              ? '2px solid rgba(255, 255, 255, 0.8)' 
+                              : '2px solid var(--accent-primary)';
+                            e.currentTarget.style.outlineOffset = '-2px';
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.opacity = '0.8';
-                            e.currentTarget.style.backgroundColor = prompt?.id === v.id ? 'rgba(255,255,255,0.2)' : 'transparent';
+                            e.currentTarget.style.outline = 'none';
                           }}
                           title="Delete this version"
                         >
-                          Delete
+                          DELETE
                         </button>
                       )}
                     </div>
@@ -1072,8 +1182,8 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             {prompt && (
               <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>
-                    Commit Message:
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.375rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    COMMIT MESSAGE:
                   </label>
                   <input
                     type="text"
@@ -1083,11 +1193,22 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     style={{
                       width: '100%',
                       padding: '0.5rem 0.75rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      fontSize: '0.9rem',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: '0',
+                      fontSize: '0.8125rem',
                       boxSizing: 'border-box',
                       marginBottom: '0.5rem',
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '600',
+                      transition: 'none',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-primary)';
                     }}
                   />
                 </div>
@@ -1096,18 +1217,32 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   disabled={isSaving || !validation.isValid}
                   style={{
                     width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: validation.isValid ? '#007bff' : '#6c757d',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: validation.isValid ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '4px',
+                    borderRadius: '0',
                     cursor: (isSaving || !validation.isValid) ? 'not-allowed' : 'pointer',
-                    fontSize: '1rem',
-                    fontWeight: '500',
-                    opacity: (isSaving || !validation.isValid) ? 0.6 : 1,
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    fontFamily: 'monospace',
+                    opacity: (isSaving || !validation.isValid) ? 0.4 : 1,
+                    transition: 'none',
+                    textTransform: 'uppercase',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSaving && validation.isValid) {
+                      e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSaving && validation.isValid) {
+                      e.currentTarget.style.outline = 'none';
+                    }
                   }}
                 >
-                  {isSaving ? 'Committing...' : 'Commit Changes'}
+                  {isSaving ? 'COMMITTING...' : 'COMMIT CHANGES'}
                 </button>
               </div>
             )}

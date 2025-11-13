@@ -467,21 +467,34 @@ function App() {
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
+      backgroundColor: 'var(--bg-primary)',
     }}>
       <div style={{
-        padding: '1rem 1.5rem',
-        borderBottom: '2px solid #ddd',
-        backgroundColor: '#fff',
+        padding: '1rem 2rem',
+        borderBottom: '1px solid var(--border-primary)',
+        backgroundColor: 'var(--bg-secondary)',
       }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Evaluizer</h1>
+        <h1 style={{ 
+          margin: 0, 
+          fontSize: '1.5rem',
+          fontWeight: '700',
+          letterSpacing: '-0.03em',
+          color: 'var(--text-primary)',
+          fontFamily: 'monospace',
+          textTransform: 'uppercase',
+        }}>EVALUIZER</h1>
       </div>
       
       {error && (
         <div style={{ 
           padding: '0.75rem 1.5rem', 
-          backgroundColor: '#fee', 
-          color: '#c33', 
-          fontSize: '0.9rem',
+          backgroundColor: 'var(--bg-secondary)', 
+          color: 'var(--accent-danger)', 
+          fontSize: '0.8125rem',
+          fontWeight: '600',
+          borderBottom: '1px solid var(--border-primary)',
+          borderTop: '1px solid var(--accent-danger)',
+          fontFamily: 'monospace',
         }}>
           {error}
         </div>
@@ -493,6 +506,7 @@ function App() {
         gap: '1.5rem',
         padding: '1.5rem',
         overflow: 'hidden',
+        backgroundColor: 'var(--bg-primary)',
       }}>
         {/* Left Column - Prompt, and LLM Config (1/3) */}
         <div style={{
@@ -529,29 +543,29 @@ function App() {
               {/* Prompt Editor Placeholder */}
               <div style={{
                 padding: '1.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '8px',
-                backgroundColor: '#fafafa',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '12px',
+                backgroundColor: 'var(--bg-elevated)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1rem',
               }}>
                 <div>
-                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: '#999' }}>Prompt Template</h2>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#bbb' }}>
+                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Prompt Template</h2>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>
                     Select a CSV file to start creating prompts
                   </p>
                 </div>
                 <div style={{
                   minHeight: '200px',
-                  border: '1px dashed #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: '#fff',
+                  border: '1px dashed var(--border-secondary)',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--bg-secondary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#ccc',
-                  fontSize: '0.9rem',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '0.875rem',
                 }}>
                   Prompt editor will appear here
                 </div>
@@ -559,27 +573,28 @@ function App() {
 
               {/* LLM Config Placeholder */}
               <div style={{
-                border: '1px solid #dee2e6',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '12px',
+                backgroundColor: 'var(--bg-elevated)',
                 overflow: 'hidden',
               }}>
                 <div style={{
-                  padding: '0.75rem 1rem',
-                  backgroundColor: '#f8f9fa',
+                  padding: '0.875rem 1.25rem',
+                  backgroundColor: 'var(--bg-tertiary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  borderBottom: '1px solid var(--border-primary)',
                 }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: '500', color: '#999' }}>
+                  <div style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--text-secondary)' }}>
                     LLM Configuration
                   </div>
-                  <span style={{ fontSize: '1rem', color: '#ddd' }}>▶</span>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)' }}>▶</span>
                 </div>
-                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
-                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
-                  <div style={{ height: '60px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px dashed #e0e0e0' }}></div>
+                <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
+                  <div style={{ height: '60px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', border: '1px dashed var(--border-secondary)' }}></div>
                 </div>
               </div>
             </>
@@ -616,8 +631,8 @@ function App() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#999',
-                fontSize: '0.9rem',
+                color: 'var(--text-tertiary)',
+                fontSize: '0.875rem',
               }}>
                 Loading...
               </div>
@@ -643,10 +658,10 @@ function App() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#999',
+                color: 'var(--text-tertiary)',
               }}>
-                <div style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>
-                  Click the <strong style={{ color: '#666' }}>+</strong> button above to upload a CSV file
+                <div style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+                  Click the <strong style={{ color: 'var(--text-secondary)' }}>+</strong> button above to upload a CSV file
                 </div>
               </div>
             )}

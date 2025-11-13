@@ -308,9 +308,9 @@ export default function DataTable({
         const numberCell = rowNumberCellRefs.current[row.id];
         if (numberCell) {
           if (expandedRowId === row.id) {
-            numberCell.style.backgroundColor = '#e7f3ff';
+            numberCell.style.backgroundColor = 'var(--bg-hover)';
           } else {
-            numberCell.style.backgroundColor = idx % 2 === 0 ? '#fff' : '#f9f9f9';
+            numberCell.style.backgroundColor = idx % 2 === 0 ? 'var(--bg-elevated)' : 'var(--bg-secondary)';
           }
         }
       });
@@ -330,7 +330,7 @@ export default function DataTable({
       <div style={{ 
         padding: '2rem', 
         textAlign: 'center', 
-        color: '#666',
+        color: 'var(--text-tertiary)',
         height: '100%',
         display: 'flex',
         alignItems: 'center',
@@ -346,7 +346,7 @@ export default function DataTable({
       <div style={{ 
         padding: '2rem', 
         textAlign: 'center', 
-        color: '#666',
+        color: 'var(--text-tertiary)',
         height: '100%',
         display: 'flex',
         alignItems: 'center',
@@ -802,7 +802,7 @@ export default function DataTable({
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0 }}>
           <span style={{ 
-            color: showPlaceholder ? '#999' : (displayOutput && displayOutput !== "—" ? '#212529' : '#999'), 
+            color: showPlaceholder ? 'var(--text-tertiary)' : (displayOutput && displayOutput !== "—" ? 'var(--text-primary)' : 'var(--text-tertiary)'), 
             fontStyle: showPlaceholder ? 'normal' : (displayOutput && displayOutput !== "—" ? 'normal' : 'italic'),
             flex: 1,
             overflow: 'hidden',
@@ -813,25 +813,40 @@ export default function DataTable({
           }}>
             {displayOutput}
           </span>
-          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
             {hasOutput && (
               <button
                 onClick={(e) => handleClearOutput(rowId, e)}
                 disabled={isRowRunning || isRunningAll}
                 style={{
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: (isRowRunning || isRunningAll) ? '#ccc' : '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
+                  backgroundColor: (isRowRunning || isRunningAll) ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                  color: (isRowRunning || isRunningAll) ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
                   cursor: (isRowRunning || isRunningAll) ? 'not-allowed' : 'pointer',
-                  fontSize: '0.75rem',
+                  fontSize: '0.6875rem',
+                  fontWeight: '700',
+                  fontFamily: 'monospace',
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
+                  transition: 'none',
+                  textTransform: 'uppercase',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isRowRunning && !isRunningAll) {
+                    e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                    e.currentTarget.style.outlineOffset = '-2px';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isRowRunning && !isRunningAll) {
+                    e.currentTarget.style.outline = 'none';
+                  }
                 }}
                 title="Clear output for this row"
               >
-                Clear
+                CLEAR
               </button>
             )}
           {currentPrompt && llmConfig && currentPrompt.content && (
@@ -840,18 +855,33 @@ export default function DataTable({
                 disabled={isRowRunning || isRunningAll}
               style={{
                 padding: '0.25rem 0.5rem',
-                  backgroundColor: (isRowRunning || isRunningAll) ? '#ccc' : '#007bff',
+                  backgroundColor: (isRowRunning || isRunningAll) ? 'var(--bg-tertiary)' : 'var(--accent-primary)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
+                borderRadius: '0',
                   cursor: (isRowRunning || isRunningAll) ? 'not-allowed' : 'pointer',
-                fontSize: '0.75rem',
+                fontSize: '0.6875rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
                 whiteSpace: 'nowrap',
                   flexShrink: 0,
+                transition: 'none',
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={(e) => {
+                if (!isRowRunning && !isRunningAll) {
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRowRunning && !isRunningAll) {
+                  e.currentTarget.style.outline = 'none';
+                }
               }}
               title="Run prompt for this row"
             >
-                {(isRowRunning || isRunningAll) ? 'Running...' : 'Run'}
+                {(isRowRunning || isRunningAll) ? 'RUNNING...' : 'RUN'}
             </button>
           )}
           </div>
@@ -883,24 +913,28 @@ export default function DataTable({
       // Create style objects to ensure React detects changes
       const thumbsUpStyle: React.CSSProperties = {
         padding: '0.25rem 0.5rem',
-        backgroundColor: annotation === 1 ? '#28a745' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
-        color: annotation === 1 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
-        border: '1px solid #ddd',
-        borderRadius: '4px',
+        backgroundColor: annotation === 1 ? 'var(--accent-success)' : (isDisabled ? 'var(--bg-tertiary)' : 'var(--bg-secondary)'),
+        color: annotation === 1 ? '#000000' : (isDisabled ? 'var(--text-tertiary)' : 'var(--text-primary)'),
+        border: `1px solid ${annotation === 1 ? 'var(--accent-success)' : 'var(--border-primary)'}`,
+        borderRadius: '0',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
-        fontSize: '1rem',
-        opacity: isDisabled ? 0.6 : 1,
+        fontSize: '0.875rem',
+        fontWeight: '700',
+        opacity: isDisabled ? 0.4 : 1,
+        transition: 'none',
       };
       
       const thumbsDownStyle: React.CSSProperties = {
         padding: '0.25rem 0.5rem',
-        backgroundColor: annotation === 0 ? '#dc3545' : (isDisabled ? '#e9ecef' : '#f0f0f0'),
-        color: annotation === 0 ? 'white' : (isDisabled ? '#adb5bd' : '#333'),
-        border: '1px solid #ddd',
-        borderRadius: '4px',
+        backgroundColor: annotation === 0 ? 'var(--accent-danger)' : (isDisabled ? 'var(--bg-tertiary)' : 'var(--bg-secondary)'),
+        color: annotation === 0 ? 'white' : (isDisabled ? 'var(--text-tertiary)' : 'var(--text-primary)'),
+        border: `1px solid ${annotation === 0 ? 'var(--accent-danger)' : 'var(--border-primary)'}`,
+        borderRadius: '0',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
-        fontSize: '1rem',
-        opacity: isDisabled ? 0.6 : 1,
+        fontSize: '0.875rem',
+        fontWeight: '700',
+        opacity: isDisabled ? 0.4 : 1,
+        transition: 'none',
       };
       
       // Use explicit key that changes when annotation changes (including null)
@@ -914,16 +948,42 @@ export default function DataTable({
             onClick={(e) => handleAnnotationClick(rowId, 1, e)}
             disabled={isDisabled}
             style={thumbsUpStyle}
+            onMouseEnter={(e) => {
+              if (!isDisabled) {
+                e.currentTarget.style.outline = annotation === 1 
+                  ? '2px solid rgba(255, 255, 255, 0.8)' 
+                  : '2px solid var(--accent-primary)';
+                e.currentTarget.style.outlineOffset = '-2px';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isDisabled) {
+                e.currentTarget.style.outline = 'none';
+              }
+            }}
           >
-            👍
+            +
           </button>
           <button
             key={`thumb-down-${rowId}-${annotationKey}`}
             onClick={(e) => handleAnnotationClick(rowId, 0, e)}
             disabled={isDisabled}
             style={thumbsDownStyle}
+            onMouseEnter={(e) => {
+              if (!isDisabled) {
+                e.currentTarget.style.outline = annotation === 0 
+                  ? '2px solid rgba(255, 255, 255, 0.8)' 
+                  : '2px solid var(--accent-primary)';
+                e.currentTarget.style.outlineOffset = '-2px';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isDisabled) {
+                e.currentTarget.style.outline = 'none';
+              }
+            }}
           >
-            👎
+            -
           </button>
         </div>
       );
@@ -956,10 +1016,14 @@ export default function DataTable({
             style={{
               width: '100%',
               padding: '0.25rem 0.5rem',
-              border: '2px solid #007bff',
-              borderRadius: '4px',
-              fontSize: '0.85rem',
+              border: '1px solid var(--accent-primary)',
+              borderRadius: '0',
+              fontSize: '0.8125rem',
               outline: 'none',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontFamily: 'monospace',
+              fontWeight: '600',
             }}
           />
         );
@@ -974,14 +1038,29 @@ export default function DataTable({
             padding: '0.25rem 0.5rem',
             cursor: isDisabled ? 'not-allowed' : 'text',
             minHeight: '1.5rem',
-            color: isDisabled ? '#adb5bd' : (feedbackValue ? '#212529' : '#999'),
+            color: isDisabled ? 'var(--text-tertiary)' : (feedbackValue ? 'var(--text-primary)' : 'var(--text-tertiary)'),
             fontStyle: feedbackValue ? 'normal' : 'italic',
-            opacity: isDisabled ? 0.6 : 1,
+            opacity: isDisabled ? 0.4 : 1,
             wordWrap: 'break-word',
             overflowWrap: 'break-word',
             whiteSpace: 'pre-wrap',
             overflow: 'hidden',
             maxWidth: '100%',
+            borderRadius: '0',
+            fontFamily: 'monospace',
+            fontSize: '0.8125rem',
+            transition: 'none',
+          }}
+          onMouseEnter={(e) => {
+            if (!isDisabled) {
+              e.currentTarget.style.outline = '1px solid var(--accent-primary)';
+              e.currentTarget.style.outlineOffset = '-1px';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isDisabled) {
+              e.currentTarget.style.outline = 'none';
+            }
           }}
         >
           {feedbackValue || (isDisabled ? "—" : "Click to add feedback...")}
@@ -1001,39 +1080,50 @@ export default function DataTable({
     }}>
       <div style={{ 
         marginBottom: '0.5rem',
-        fontSize: '0.9rem',
-        color: '#666',
+        fontSize: '0.75rem',
+        color: 'var(--text-tertiary)',
+        fontWeight: '700',
+        fontFamily: 'monospace',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
       }}>
-        {data.rows.length} rows • {data.columns.length} columns
+        {data.rows.length} ROWS • {data.columns.length} COLUMNS
       </div>
       <div style={{ 
         flex: 1,
         overflow: 'auto',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
+        border: '1px solid var(--border-primary)',
+        borderRadius: '0',
+        backgroundColor: 'var(--bg-elevated)',
       }}>
         <table
           ref={tableRef}
           style={{
             width: '100%',
             borderCollapse: 'collapse',
-            fontSize: '0.85rem',
+            fontSize: '0.875rem',
             tableLayout: 'fixed',
           }}
         >
           <thead style={{ position: 'sticky', top: 0, zIndex: 20 }}>
-            <tr style={{ backgroundColor: '#f5f5f5', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+            <tr style={{ backgroundColor: 'var(--bg-tertiary)', borderBottom: '2px solid var(--border-primary)' }}>
               <th
                 style={{
                   padding: '0.5rem 0.75rem',
                   textAlign: 'center',
-                  fontWeight: 'bold',
-                  backgroundColor: '#f5f5f5',
+                  fontWeight: '700',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
                   whiteSpace: 'nowrap',
                   width: '60px',
                   minWidth: '60px',
                   maxWidth: '60px',
                   verticalAlign: 'middle',
+                  borderBottom: '2px solid var(--border-primary)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
                 }}
               >
                 #
@@ -1047,8 +1137,9 @@ export default function DataTable({
                     style={{
                       padding: '0.5rem 0.75rem',
                       textAlign: 'center',
-                      fontWeight: 'bold',
-                      backgroundColor: '#f5f5f5',
+                      fontWeight: '700',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      color: 'var(--text-primary)',
                       position: 'relative',
                       whiteSpace: 'nowrap',
                       width: `${columnWidth}px`,
@@ -1056,6 +1147,11 @@ export default function DataTable({
                       maxWidth: `${columnWidth}px`,
                       zIndex: 1,
                       verticalAlign: 'middle',
+                      borderBottom: '2px solid var(--border-primary)',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
                     }}
                   >
                     <div style={{
@@ -1077,13 +1173,17 @@ export default function DataTable({
                           onClick={(e) => e.stopPropagation()}
                           style={{
                             padding: '0.25rem 0.5rem',
-                            border: '2px solid #007bff',
-                            borderRadius: '4px',
-                            fontSize: '0.85rem',
+                            border: '1px solid var(--accent-primary)',
+                            borderRadius: '0',
+                            fontSize: '0.8125rem',
                             outline: 'none',
                             textAlign: 'center',
                             minWidth: '100px',
                             maxWidth: '200px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)',
+                            fontFamily: 'monospace',
+                            fontWeight: '600',
                           }}
                         />
                       ) : (
@@ -1116,78 +1216,92 @@ export default function DataTable({
                                   border: 'none',
                                   cursor: 'pointer',
                                   fontSize: '1rem',
-                                  color: '#666',
-                                  borderRadius: '4px',
+                                  color: 'var(--text-tertiary)',
+                                  borderRadius: '0',
                                   lineHeight: '1',
+                                  transition: 'none',
+                                  fontWeight: '700',
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = '#e0e0e0';
+                                  e.currentTarget.style.outline = '1px solid var(--accent-primary)';
+                                  e.currentTarget.style.outlineOffset = '-1px';
+                                  e.currentTarget.style.color = 'var(--text-primary)';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
+                                  e.currentTarget.style.outline = 'none';
+                                  e.currentTarget.style.color = 'var(--text-tertiary)';
                                 }}
                               >
-                                ⋯
+                                ...
                               </button>
                               {openMenuColumn === column && (
                                 <div style={{
                                   position: 'absolute',
                                   top: '100%',
                                   right: 0,
-                                  marginTop: '0.25rem',
-                                  backgroundColor: 'white',
-                                  border: '1px solid #ddd',
-                                  borderRadius: '4px',
-                                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                  minWidth: '120px',
+                                  marginTop: '0',
+                                  backgroundColor: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border-primary)',
+                                  borderRadius: '0',
+                                  boxShadow: 'none',
+                                  minWidth: '140px',
                                   zIndex: 100,
                                   display: 'flex',
                                   flexDirection: 'column',
+                                  overflow: 'hidden',
                                 }}>
                                   <button
                                     onClick={() => handleRenameColumn(column)}
                                     style={{
                                       width: '100%',
-                                      padding: '0.5rem 0.75rem',
+                                      padding: '0.5rem 1rem',
                                       textAlign: 'left',
-                                      backgroundColor: 'white',
+                                      backgroundColor: 'transparent',
                                       border: 'none',
-                                      borderBottom: '1px solid #eee',
+                                      borderBottom: '1px solid var(--border-primary)',
                                       cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                      color: '#333',
-                                      borderRadius: '4px 4px 0 0',
+                                      fontSize: '0.8125rem',
+                                      fontWeight: '600',
+                                      fontFamily: 'monospace',
+                                      color: 'var(--text-primary)',
+                                      transition: 'none',
+                                      textTransform: 'uppercase',
                                     }}
                                     onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                                      e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                                      e.currentTarget.style.outlineOffset = '-2px';
                                     }}
                                     onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = 'white';
+                                      e.currentTarget.style.outline = 'none';
                                     }}
                                   >
-                                    Rename
+                                    RENAME
                                   </button>
                                   <button
                                     onClick={() => handleDropColumn(column)}
                                     style={{
                                       width: '100%',
-                                      padding: '0.5rem 0.75rem',
+                                      padding: '0.5rem 1rem',
                                       textAlign: 'left',
-                                      backgroundColor: 'white',
+                                      backgroundColor: 'transparent',
                                       border: 'none',
                                       cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                      color: '#dc3545',
-                                      borderRadius: '0 0 4px 4px',
+                                      fontSize: '0.8125rem',
+                                      fontWeight: '600',
+                                      fontFamily: 'monospace',
+                                      color: 'var(--accent-danger)',
+                                      transition: 'none',
+                                      textTransform: 'uppercase',
                                     }}
                                     onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                                      e.currentTarget.style.outline = '2px solid var(--accent-danger)';
+                                      e.currentTarget.style.outlineOffset = '-2px';
                                     }}
                                     onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = 'white';
+                                      e.currentTarget.style.outline = 'none';
                                     }}
                                   >
-                                    Drop
+                                    DROP
                                   </button>
                                 </div>
                               )}
@@ -1205,18 +1319,18 @@ export default function DataTable({
                         bottom: 0,
                         width: '1px',
                         cursor: 'col-resize',
-                        backgroundColor: resizingColumn === column ? '#007bff' : '#ddd',
+                        backgroundColor: resizingColumn === column ? 'var(--accent-primary)' : 'var(--border-primary)',
                         zIndex: 2,
-                        transition: 'background-color 0.2s',
+                        transition: 'none',
                       }}
                       onMouseEnter={(e) => {
                         if (resizingColumn !== column) {
-                          e.currentTarget.style.backgroundColor = '#999';
+                          e.currentTarget.style.backgroundColor = 'var(--border-accent)';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (resizingColumn !== column) {
-                          e.currentTarget.style.backgroundColor = '#ddd';
+                          e.currentTarget.style.backgroundColor = 'var(--border-primary)';
                         }
                       }}
                     />
@@ -1234,48 +1348,43 @@ export default function DataTable({
                   onClick={(e) => handleRowClick(row.id, e)}
                   style={{
                     backgroundColor: isExpanded 
-                      ? '#e7f3ff' 
-                      : idx % 2 === 0 ? '#fff' : '#f9f9f9',
+                      ? 'var(--bg-hover)' 
+                      : idx % 2 === 0 ? 'var(--bg-elevated)' : 'var(--bg-secondary)',
                     cursor: 'pointer',
-                    transition: 'background-color 0.2s',
+                    transition: 'none',
+                    borderBottom: '1px solid var(--border-primary)',
                   }}
                   onMouseEnter={(e) => {
                     if (!isExpanded) {
-                      const hoverColor = '#f0f0f0';
-                      e.currentTarget.style.backgroundColor = hoverColor;
-                      const numberCell = rowNumberCellRefs.current[row.id];
-                      if (numberCell) {
-                        numberCell.style.backgroundColor = hoverColor;
-                      }
+                      e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                      e.currentTarget.style.outlineOffset = '-2px';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isExpanded) {
-                      const baseColor = idx % 2 === 0 ? '#fff' : '#f9f9f9';
-                      e.currentTarget.style.backgroundColor = baseColor;
-                      const numberCell = rowNumberCellRefs.current[row.id];
-                      if (numberCell) {
-                        numberCell.style.backgroundColor = baseColor;
-                      }
+                      e.currentTarget.style.outline = 'none';
                     }
                   }}
                 >
                   <td
                     ref={(el) => { rowNumberCellRefs.current[row.id] = el; }}
                     style={{
-                      padding: isExpanded ? '1rem 0.75rem' : '0.5rem 0.75rem',
+                      padding: isExpanded ? '0.75rem 0.5rem' : '0.5rem 0.5rem',
                       textAlign: 'center',
-                      fontWeight: '500',
-                      color: '#666',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
                       backgroundColor: isExpanded 
-                        ? '#e7f3ff' 
-                        : idx % 2 === 0 ? '#fff' : '#f9f9f9',
+                        ? 'var(--bg-hover)' 
+                        : idx % 2 === 0 ? 'var(--bg-elevated)' : 'var(--bg-secondary)',
                       whiteSpace: 'nowrap',
                       width: '60px',
                       minWidth: '60px',
                       maxWidth: '60px',
-                      transition: 'background-color 0.2s',
+                      transition: 'none',
                       verticalAlign: 'top',
+                      borderRight: '1px solid var(--border-primary)',
                     }}
                   >
                     {idx + 1}
@@ -1288,7 +1397,7 @@ export default function DataTable({
                       <td
                         key={column}
                         style={{
-                          padding: isExpanded ? '1rem 0.75rem' : '0.5rem 0.75rem',
+                          padding: isExpanded ? '0.75rem 0.5rem' : '0.5rem 0.5rem',
                           overflow: isExpanded || isFeedbackColumn ? 'visible' : 'hidden',
                           textOverflow: isExpanded || isFeedbackColumn ? 'clip' : 'ellipsis',
                           whiteSpace: (isExpanded && !isEvalColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
@@ -1297,6 +1406,9 @@ export default function DataTable({
                           width: `${columnWidth}px`,
                           minWidth: `${columnWidth}px`,
                           maxWidth: `${columnWidth}px`,
+                          color: 'var(--text-primary)',
+                          fontSize: '0.8125rem',
+                          fontFamily: 'monospace',
                         }}
                       >
                         {renderCellContent(column, row, row.id)}

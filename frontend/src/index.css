@@ -1,20 +1,50 @@
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  font-family: 'Inter', 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace, -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 
-  color-scheme: light;
-  color: #213547;
-  background-color: #ffffff;
+  color-scheme: dark;
+  
+  /* Hard-edged dark theme palette */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #111111;
+  --bg-elevated: #141414;
+  --bg-hover: #1a1a1a;
+  
+  --border-primary: #1f1f1f;
+  --border-secondary: #2a2a2a;
+  --border-accent: #3a3a3a;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #707070;
+  
+  --accent-primary: #5b21b6;
+  --accent-primary-hover: #4c1d95;
+  --accent-success: #67d680;
+  --accent-success-hover: #52b866;
+  --accent-danger: #cc2c56;
+  --accent-danger-hover: #a82345;
+  --accent-warning: #78350f;
+  
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.12);
+
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -22,11 +52,32 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow: hidden;
+  background-color: var(--bg-primary);
 }
 
 #root {
   width: 100%;
   height: 100vh;
+  background-color: var(--bg-primary);
+}
+
+/* Custom scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
 }
 
 /* Hide scrollbar for highlight overlay in PromptEditor */
@@ -37,4 +88,63 @@ body {
 
 .highlight-overlay::-webkit-scrollbar {
   display: none; /* Chrome/Safari */
+}
+
+/* Dark range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-track {
+  background: var(--bg-tertiary);
+  height: 4px;
+  border: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--accent-primary);
+  height: 12px;
+  width: 12px;
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  margin-top: -4px;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary);
+}
+
+input[type="range"]::-moz-range-track {
+  background: var(--bg-tertiary);
+  height: 4px;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  background: var(--accent-primary);
+  height: 12px;
+  width: 12px;
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  border-radius: 0;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary);
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: var(--text-tertiary);
+  cursor: not-allowed;
 }

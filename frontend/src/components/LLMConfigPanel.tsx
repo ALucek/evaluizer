@@ -158,7 +158,7 @@ export default function LLMConfigPanel({
             Advanced Configuration
           </div>
           <span style={{ fontSize: '1rem', color: '#6c757d' }}>
-            {isAdvancedExpanded ? '▼' : '▶'}
+            {isAdvancedExpanded ? 'v' : '>'}
           </span>
         </div>
         
@@ -479,7 +479,7 @@ export default function LLMConfigPanel({
                 fontSize: '0.875rem',
                 border: '1px solid #fde68a',
               }}>
-                ⚠️ Save a valid prompt template before running
+                WARNING: Save a valid prompt template before running
               </div>
             )}
             

@@ -105,12 +105,12 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
 
   return (
     <div style={{ 
-      borderBottom: '2px solid #ddd',
+      borderBottom: '1px solid var(--border-primary)',
       marginBottom: '1rem',
     }}>
       <div style={{ 
         display: 'flex', 
-        gap: '0.25rem',
+        gap: '0.5rem',
         overflowX: 'auto',
         paddingBottom: '0.5rem',
         alignItems: 'center',
@@ -128,34 +128,36 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
           disabled={uploading}
           style={{
             padding: '0.5rem 1rem',
-            backgroundColor: '#f5f5f5',
-            color: '#333',
-            border: 'none',
-            borderRadius: '4px',
+            backgroundColor: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '0',
             cursor: uploading ? 'not-allowed' : 'pointer',
-            opacity: uploading ? 0.6 : 1,
-            fontSize: '1.2rem',
-            fontWeight: 'bold',
-            transition: 'background-color 0.2s',
+            opacity: uploading ? 0.4 : 1,
+            fontSize: '1.125rem',
+            fontWeight: '700',
+            fontFamily: 'monospace',
+            transition: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             minWidth: '2.5rem',
             height: '2rem',
+            textTransform: 'uppercase',
           }}
           onMouseEnter={(e) => {
             if (!uploading) {
-              e.currentTarget.style.backgroundColor = '#e0e0e0';
+              e.currentTarget.style.borderColor = 'var(--accent-primary)';
             }
           }}
           onMouseLeave={(e) => {
             if (!uploading) {
-              e.currentTarget.style.backgroundColor = '#f5f5f5';
+              e.currentTarget.style.borderColor = 'var(--border-primary)';
             }
           }}
           title={uploading ? 'Uploading...' : 'Upload CSV file'}
         >
-          {uploading ? '⋯' : '+'}
+          {uploading ? '...' : '+'}
         </button>
         {files.map((file) => (
             <div
@@ -171,20 +173,23 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
               style={{
                 padding: '0.5rem 1rem',
                 paddingRight: '2.5rem',
-                backgroundColor: selectedFileId === file.id ? '#007bff' : '#f5f5f5',
-                color: selectedFileId === file.id ? 'white' : '#333',
+                backgroundColor: selectedFileId === file.id ? 'var(--bg-elevated)' : 'var(--bg-secondary)',
+                color: selectedFileId === file.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 border: 'none',
-                borderBottom: selectedFileId === file.id ? '2px solid #007bff' : '2px solid transparent',
-                borderRadius: '4px 4px 0 0',
+                borderBottom: selectedFileId === file.id ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                borderRadius: '0',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
-                fontSize: '0.9rem',
+                transition: 'none',
+                fontSize: '0.8125rem',
+                fontWeight: selectedFileId === file.id ? '700' : '500',
+                fontFamily: 'monospace',
                 whiteSpace: 'nowrap',
                 marginBottom: '-2px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
                 position: 'relative',
+                textTransform: 'uppercase',
               }}
             >
               <span>{file.filename}</span>
@@ -196,12 +201,12 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
                 style={{
                   padding: '0',
                   backgroundColor: 'transparent',
-                  color: selectedFileId === file.id ? 'white' : '#666',
+                  color: selectedFileId === file.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
                   border: 'none',
-                  borderRadius: '4px',
+                  borderRadius: '0',
                   cursor: 'pointer',
                   fontSize: '1rem',
-                  transition: 'background-color 0.2s',
+                  transition: 'none',
                   lineHeight: '1',
                   display: 'flex',
                   alignItems: 'center',
@@ -210,16 +215,20 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
                   height: '1.5rem',
                   position: 'absolute',
                   right: '0.25rem',
+                  fontWeight: '700',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = selectedFileId === file.id ? 'rgba(255,255,255,0.2)' : '#e0e0e0';
+                  e.currentTarget.style.outline = '1px solid var(--accent-primary)';
+                  e.currentTarget.style.outlineOffset = '-1px';
+                  e.currentTarget.style.color = 'var(--text-primary)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.outline = 'none';
+                  e.currentTarget.style.color = selectedFileId === file.id ? 'var(--text-primary)' : 'var(--text-tertiary)';
                 }}
                 title="File options"
               >
-                ⋯
+                ...
               </button>
             </button>
             {openMenuFileId === file.id && menuPosition && (
@@ -229,60 +238,69 @@ export default function CSVFileList({ files, selectedFileId, currentPromptId, on
                   position: 'fixed',
                   top: `${menuPosition.top}px`,
                   right: `${menuPosition.right}px`,
-                  backgroundColor: 'white',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                  minWidth: '120px',
+                  backgroundColor: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
+                  boxShadow: 'none',
+                  minWidth: '140px',
                   zIndex: 1000,
                   display: 'flex',
                   flexDirection: 'column',
+                  overflow: 'hidden',
                 }}
               >
                 <button
                   onClick={(e) => handleExport(e, file.id, file.filename)}
                   style={{
                     width: '100%',
-                    padding: '0.5rem 0.75rem',
+                    padding: '0.5rem 1rem',
                     textAlign: 'left',
-                    backgroundColor: 'white',
+                    backgroundColor: 'transparent',
                     border: 'none',
-                    borderBottom: '1px solid #eee',
+                    borderBottom: '1px solid var(--border-primary)',
                     cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    color: '#333',
-                    borderRadius: '4px 4px 0 0',
+                    fontSize: '0.8125rem',
+                    fontWeight: '600',
+                    fontFamily: 'monospace',
+                    color: 'var(--text-primary)',
+                    transition: 'none',
+                    textTransform: 'uppercase',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                    e.currentTarget.style.outlineOffset = '-2px';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.outline = 'none';
                   }}
                 >
-                  Export
+                  EXPORT
                 </button>
                 <button
                   onClick={(e) => handleDelete(e, file.id)}
                   style={{
                     width: '100%',
-                    padding: '0.5rem 0.75rem',
+                    padding: '0.5rem 1rem',
                     textAlign: 'left',
-                    backgroundColor: 'white',
+                    backgroundColor: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    color: '#dc3545',
-                    borderRadius: '0 0 4px 4px',
+                    fontSize: '0.8125rem',
+                    fontWeight: '600',
+                    fontFamily: 'monospace',
+                    color: 'var(--accent-danger)',
+                    transition: 'none',
+                    textTransform: 'uppercase',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    e.currentTarget.style.outline = '2px solid var(--accent-danger)';
+                    e.currentTarget.style.outlineOffset = '-2px';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.outline = 'none';
                   }}
                 >
-                  Delete
+                  DELETE
                 </button>
               </div>
             )}
