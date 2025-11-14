@@ -247,6 +247,10 @@ export default function JudgeEvaluationsPanel({
             maxTokens: localLLMConfig.maxTokens,
           });
         }
+        // Close the editor after saving
+        setSelectedJudgeName(null);
+        setShowNewForm(false);
+        setIsLLMConfigExpanded(false);
       } else if (onCreateJudgeConfig) {
         // Creating new config
         await onCreateJudgeConfig(judgeName.trim(), judgePrompt.trim(), localLLMConfig);
@@ -971,12 +975,12 @@ export default function JudgeEvaluationsPanel({
 
       {/* Save and Close Editor Buttons - Show when editing existing evaluation, at the bottom */}
       {selectedJudgeConfig && !showNewForm && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             onClick={handleSave}
             disabled={isSaving || !judgeName.trim() || !judgePrompt.trim()}
             style={{
-              width: '100%',
+              flex: 1,
               padding: '0.5rem 1rem',
               backgroundColor: (judgeName.trim() && judgePrompt.trim()) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: 'white',
@@ -1007,7 +1011,7 @@ export default function JudgeEvaluationsPanel({
           <button
             onClick={handleCancel}
             style={{
-              width: '100%',
+              flex: 1,
               padding: '0.5rem 1rem',
               backgroundColor: 'var(--bg-secondary)',
               color: 'var(--text-primary)',
@@ -1035,12 +1039,12 @@ export default function JudgeEvaluationsPanel({
 
       {/* Save and Cancel Buttons - Only show when creating new, at the bottom */}
       {showNewForm && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             onClick={handleSave}
             disabled={isSaving || !judgeName.trim() || !judgePrompt.trim()}
             style={{
-              width: '100%',
+              flex: 1,
               padding: '0.5rem 1rem',
               backgroundColor: (judgeName.trim() && judgePrompt.trim()) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: 'white',
@@ -1071,7 +1075,7 @@ export default function JudgeEvaluationsPanel({
           <button
             onClick={handleCancel}
             style={{
-              width: '100%',
+              flex: 1,
               padding: '0.5rem 1rem',
               backgroundColor: 'var(--bg-secondary)',
               color: 'var(--text-primary)',
@@ -1083,6 +1087,13 @@ export default function JudgeEvaluationsPanel({
               fontFamily: 'monospace',
               transition: 'none',
               textTransform: 'uppercase',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+              e.currentTarget.style.outlineOffset = '-2px';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.outline = 'none';
             }}
           >
             CANCEL

@@ -1,7 +1,7 @@
 """Function-based evaluations package for Evaluizer."""
 
 from .base import EvaluationContext, EvaluationResult, EvaluationPlugin
-from .registry import list_plugins, get_plugin, register_plugin
+from .registry import list_plugins, get_plugin, register_plugin, refresh_plugins
 
 # Import plugins to trigger their registration
 # This must happen after registry functions are defined
@@ -14,5 +14,6 @@ __all__ = [
     "list_plugins",
     "get_plugin",
     "register_plugin",
+    "refresh_plugins",
 ]
 

@@ -1,19 +1,17 @@
 """Base interfaces and types for function-based evaluations."""
 
-from typing import Protocol, Mapping, Any, Optional
-from dataclasses import dataclass
+from typing import Protocol, Any, Optional
+from pydantic import BaseModel
 
 
-@dataclass
-class EvaluationContext:
+class EvaluationContext(BaseModel):
     """Context provided to an evaluation plugin when running."""
-    row: Mapping[str, Any]  # The CSV row data as a dictionary
-    output: Optional[str]  # The output string to evaluate (may be None)
+    row: dict[str, Any]  # The CSV row data as a dictionary
+    output: Optional[str] = None  # The output string to evaluate (may be None)
     config: Optional[dict[str, Any]] = None  # Optional configuration for the evaluation
 
 
-@dataclass
-class EvaluationResult:
+class EvaluationResult(BaseModel):
     """Result returned by an evaluation plugin."""
     score: float | int | bool  # Main score value
     details: Optional[dict[str, Any]] = None  # Optional additional details/metadata

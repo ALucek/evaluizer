@@ -33,8 +33,19 @@ def register_plugin(plugin_class: Type[EvaluationPlugin]) -> None:
     plugin_instance = plugin_class()
     name = plugin_instance.name
     
+    # Allow re-registration if it's the same class (for refresh scenarios)
     if name in _registry:
-        raise ValueError(f"Plugin with name '{name}' is already registered")
+        existing_info = _registry[name]
+        if existing_info.plugin_class == plugin_class:
+            # Same class, just update the info in case description changed
+            _registry[name] = PluginInfo(
+                name=name,
+                description=getattr(plugin_instance, 'description', None),
+                plugin_class=plugin_class
+            )
+            return
+        else:
+            raise ValueError(f"Plugin with name '{name}' is already registered with a different class")
     
     _registry[name] = PluginInfo(
         name=name,
@@ -74,4 +85,20 @@ def get_plugin(name: str) -> EvaluationPlugin:
         raise ValueError(f"Plugin '{name}' has no plugin_class set")
     
     return plugin_info.plugin_class()
+
+
+def refresh_plugins() -> None:
+    """
+    Re-discover and reload all plugin modules.
+    This allows new plugin files to be discovered without restarting the backend.
+    
+    This will reload the plugins module, which will re-discover all plugin files
+    (both existing and new) and re-register them.
+    """
+    import importlib
+    from . import plugins
+    
+    # Reload the plugins module, which will call _discover_plugins() again
+    # This will reload existing modules and discover new ones
+    importlib.reload(plugins)
 

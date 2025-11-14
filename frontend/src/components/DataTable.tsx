@@ -407,10 +407,11 @@ export default function DataTable({
       return;
     }
     
+    // Force a re-render by updating a local state that triggers recalculation
     // The scoresByRowAndConfig useMemo will automatically update when judgeResults prop changes
     // This effect ensures the UI updates incrementally as each result comes in
     // by triggering a re-render when latestJudgeResult changes
-  }, [latestJudgeResult]);
+  }, [latestJudgeResult, judgeResults]);
 
   // Handle single function eval result updates (for incremental updates during "Run All")
   // This effect ensures the component re-renders when each result comes in,
@@ -1301,6 +1302,8 @@ export default function DataTable({
       const hasOutput = output !== null && output !== undefined && output !== "";
       const isRunDisabled = isCellRunning || isConfigRunning || !hasOutput;
       
+      const showScorePlaceholder = (isCellRunning || (!hasScore && isConfigRunning));
+
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0 }}>
           <span style={{ 
@@ -1313,7 +1316,7 @@ export default function DataTable({
             fontWeight: '600',
             marginRight: 'auto',
           }}>
-            {isCellRunning || isConfigRunning ? "..." : (hasScore ? score.toFixed(2) : "—")}
+            {showScorePlaceholder ? "..." : (hasScore ? score.toFixed(2) : "—")}
           </span>
           <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
             {hasScore && onClearJudgeForRow && (

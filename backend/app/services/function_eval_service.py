@@ -13,7 +13,7 @@ if evaluations_path not in sys.path:
 
 try:
     # Import from package root to trigger plugin registration via __init__.py
-    from evaluations import list_plugins, get_plugin
+    from evaluations import list_plugins, get_plugin, refresh_plugins
     from evaluations.base import EvaluationContext, EvaluationResult
 except ImportError as e:
     # If evaluations package isn't available, provide fallback
@@ -27,10 +27,16 @@ def list_function_evaluations() -> List[Dict[str, Any]]:
     """
     List all available function-based evaluation plugins.
     
+    This function refreshes the plugin registry before listing to ensure
+    newly added plugin files are discovered without restarting the backend.
+    
     Returns:
         List of dictionaries with plugin information (name, description)
     """
     try:
+        # Refresh plugins to discover any new plugin files
+        refresh_plugins()
+        
         plugins = list_plugins()
         return [
             {

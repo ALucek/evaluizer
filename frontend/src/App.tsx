@@ -623,7 +623,7 @@ function App() {
       setRunningJudgeCells(prev => new Set(prev).add(cellKey));
       const result = await runJudge({ configId, csvRowId: rowId });
       // Update incrementally as result comes in (similar to latestEvaluation)
-      // Update both synchronously to trigger immediate UI update
+      // Update synchronously to trigger immediate UI update
       setLatestJudgeResult(result);
       setJudgeResults(prev => {
         const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
@@ -688,21 +688,44 @@ function App() {
         }
         
         const batchPromises = batch.map(async (rowId) => {
+          const cellKey = `${configId}-${rowId}`;
+          // Mark this cell as running
+          setRunningJudgeCells(prev => new Set(prev).add(cellKey));
+          
           if (judgeCancellationRef.current) {
+            setRunningJudgeCells(prev => {
+              const next = new Set(prev);
+              next.delete(cellKey);
+              return next;
+            });
             return { success: false, rowId, error: new Error('Cancelled') };
           }
           
           try {
             const result = await runJudge({ configId, csvRowId: rowId });
             // Update incrementally as each result comes in (similar to latestEvaluation)
-            // Update both synchronously to trigger immediate UI update
-            setLatestJudgeResult(result);
-            setJudgeResults(prev => {
-              const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
-              return [...next, result];
-            });
+            // Use setTimeout to ensure each update happens in its own render cycle
+            setTimeout(() => {
+              setLatestJudgeResult(result);
+              setJudgeResults(prev => {
+                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+                return [...next, result];
+              });
+              // Clear the running state for this specific cell
+              setRunningJudgeCells(prev => {
+                const next = new Set(prev);
+                next.delete(cellKey);
+                return next;
+              });
+            }, 0);
             return { success: true, rowId, result };
           } catch (err) {
+            // Clear running state even on error
+            setRunningJudgeCells(prev => {
+              const next = new Set(prev);
+              next.delete(cellKey);
+              return next;
+            });
             if (!judgeCancellationRef.current) {
               const errorMessage = err instanceof Error ? err.message : `Failed to run judge for row ${rowId}`;
               setError(errorMessage);

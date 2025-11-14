@@ -35,13 +35,30 @@ export default function FunctionEvaluationsPanel({
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedFunctionName, setSelectedFunctionName] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadAvailableFunctions = async () => {
+    try {
+      const functions = await listFunctionEvaluations();
+      setAvailableFunctions(functions);
+    } catch (err) {
+      console.error('Failed to load function evaluations:', err);
+    }
+  };
 
   useEffect(() => {
     // Load available function evaluations
-    listFunctionEvaluations()
-      .then(setAvailableFunctions)
-      .catch(err => console.error('Failed to load function evaluations:', err));
+    loadAvailableFunctions();
   }, []);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadAvailableFunctions();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!selectedFunctionName || !csvFileId || !onCreateFunctionEvalConfig) return;
@@ -263,45 +280,76 @@ export default function FunctionEvaluationsPanel({
             );
             })}
 
-            {/* Add Evaluation Button */}
+            {/* Add Evaluation Button and Refresh */}
             {!showNewForm && (
-              <button
-                onClick={() => {
-                  setShowNewForm(true);
-                  setSelectedFunctionName('');
-                }}
-                disabled={!csvFileId}
-                style={{
-                  width: 'fit-content',
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: 'transparent',
-                  color: csvFileId ? 'var(--accent-success)' : 'var(--text-tertiary)',
-                  border: `1px solid ${csvFileId ? 'var(--accent-success)' : 'var(--border-primary)'}`,
-                  borderRadius: '0',
-                  cursor: csvFileId ? 'pointer' : 'not-allowed',
-                  fontSize: '0.6875rem',
-                  fontWeight: '700',
-                  fontFamily: 'monospace',
-                  transition: 'none',
-                  textTransform: 'uppercase',
-                  opacity: csvFileId ? 1 : 0.4,
-                  marginTop: '0.375rem',
-                  alignSelf: 'flex-start',
-                }}
-                onMouseEnter={(e) => {
-                  if (csvFileId) {
-                    e.currentTarget.style.outline = '2px solid var(--accent-success)';
-                    e.currentTarget.style.outlineOffset = '-2px';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (csvFileId) {
-                    e.currentTarget.style.outline = 'none';
-                  }
-                }}
-              >
-                + ADD EVALUATION
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.375rem', alignSelf: 'flex-start' }}>
+                <button
+                  onClick={() => {
+                    setShowNewForm(true);
+                    setSelectedFunctionName('');
+                  }}
+                  disabled={!csvFileId}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    backgroundColor: 'transparent',
+                    color: csvFileId ? 'var(--accent-success)' : 'var(--text-tertiary)',
+                    border: `1px solid ${csvFileId ? 'var(--accent-success)' : 'var(--border-primary)'}`,
+                    borderRadius: '0',
+                    cursor: csvFileId ? 'pointer' : 'not-allowed',
+                    fontSize: '0.6875rem',
+                    fontWeight: '700',
+                    fontFamily: 'monospace',
+                    transition: 'none',
+                    textTransform: 'uppercase',
+                    opacity: csvFileId ? 1 : 0.4,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (csvFileId) {
+                      e.currentTarget.style.outline = '2px solid var(--accent-success)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (csvFileId) {
+                      e.currentTarget.style.outline = 'none';
+                    }
+                  }}
+                >
+                  + ADD EVALUATION
+                </button>
+                <button
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    backgroundColor: 'transparent',
+                    color: isRefreshing ? 'var(--text-tertiary)' : 'var(--accent-primary)',
+                    border: `1px solid ${isRefreshing ? 'var(--border-primary)' : 'var(--accent-primary)'}`,
+                    borderRadius: '0',
+                    cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                    fontSize: '0.6875rem',
+                    fontWeight: '700',
+                    fontFamily: 'monospace',
+                    transition: 'none',
+                    textTransform: 'uppercase',
+                    opacity: isRefreshing ? 0.4 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isRefreshing) {
+                      e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isRefreshing) {
+                      e.currentTarget.style.outline = 'none';
+                    }
+                  }}
+                  title="Refresh available function evaluations"
+                >
+                  {isRefreshing ? 'REFRESHING...' : 'REFRESH'}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -409,6 +457,120 @@ export default function FunctionEvaluationsPanel({
               CANCEL
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Run All Evals and Clear All Buttons - Always at the bottom */}
+      {functionEvalConfigs.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {onRunFunctionEvalForAllRows && (
+            <button
+              onClick={async () => {
+                // Run all evaluations sequentially from top to bottom (oldest to newest)
+                // Use the same sort order as the display
+                const sortedConfigs = [...functionEvalConfigs].sort((a, b) => {
+                  // Sort by created_at ascending (oldest first), then by name - so newest appear at bottom
+                  if (a.created_at && b.created_at) {
+                    const dateA = new Date(a.created_at).getTime();
+                    const dateB = new Date(b.created_at).getTime();
+                    if (dateA !== dateB) {
+                      return dateA - dateB;
+                    }
+                  }
+                  return a.name.localeCompare(b.name);
+                });
+                
+                for (const config of sortedConfigs) {
+                  if (onRunFunctionEvalForAllRows) {
+                    await onRunFunctionEvalForAllRows(config.id);
+                  }
+                }
+              }}
+              disabled={!csvFileId}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                backgroundColor: !csvFileId ? 'var(--bg-tertiary)' : 'var(--accent-success)',
+                color: !csvFileId ? 'var(--text-tertiary)' : '#000000',
+                border: 'none',
+                borderRadius: '0',
+                cursor: !csvFileId ? 'not-allowed' : 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                textTransform: 'uppercase',
+                opacity: !csvFileId ? 0.4 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (csvFileId) {
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (csvFileId) {
+                  e.currentTarget.style.outline = 'none';
+                }
+              }}
+            >
+              RUN ALL EVALS
+            </button>
+          )}
+          {onClearFunctionEvalForAllRows && (
+            <button
+              onClick={async () => {
+                if (window.confirm(`Are you sure you want to clear ALL scores for ALL function evaluations? This action cannot be undone.`)) {
+                  // Clear all evaluations sequentially
+                  const sortedConfigs = [...functionEvalConfigs].sort((a, b) => {
+                    if (a.created_at && b.created_at) {
+                      const dateA = new Date(a.created_at).getTime();
+                      const dateB = new Date(b.created_at).getTime();
+                      if (dateA !== dateB) {
+                        return dateA - dateB;
+                      }
+                    }
+                    return a.name.localeCompare(b.name);
+                  });
+                  
+                  for (const config of sortedConfigs) {
+                    if (onClearFunctionEvalForAllRows) {
+                      await onClearFunctionEvalForAllRows(config.id);
+                    }
+                  }
+                }
+              }}
+              disabled={!csvFileId}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                backgroundColor: !csvFileId ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                color: !csvFileId ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '0',
+                cursor: !csvFileId ? 'not-allowed' : 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                textTransform: 'uppercase',
+                opacity: !csvFileId ? 0.4 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (csvFileId) {
+                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (csvFileId) {
+                  e.currentTarget.style.outline = 'none';
+                }
+              }}
+            >
+              CLEAR ALL
+            </button>
+          )}
         </div>
       )}
     </div>

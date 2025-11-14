@@ -4,7 +4,7 @@ This package contains function-based evaluation plugins for Evaluizer. These eva
 
 ## Structure
 
-- `src/evaluations/base.py` - Core interfaces (`EvaluationPlugin`, `EvaluationContext`, `EvaluationResult`)
+- `src/evaluations/base.py` - Core interfaces (`EvaluationPlugin`, `EvaluationContext`, `EvaluationResult`) using Pydantic models
 - `src/evaluations/registry.py` - Plugin registry for discovery and instantiation
 - `src/evaluations/plugins/` - Individual evaluation plugin implementations
 
