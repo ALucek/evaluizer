@@ -7,13 +7,10 @@ GEPA optimizer with scoring/eval framework
 
 save eval reports
 
-run individual evals once they're in there
-
-add in function evals (exact match, cosine similarity, other reward functions)
-
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 tech debt in frontend
+huge code review and minimization needed for front back and eval package
 
 logo
 

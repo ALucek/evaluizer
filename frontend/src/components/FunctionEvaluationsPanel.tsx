@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FunctionEvalConfig, listFunctionEvaluations, FunctionEvaluationInfo } from '../services/api';
 
 interface FunctionEvaluationsPanelProps {
@@ -50,6 +50,12 @@ export default function FunctionEvaluationsPanel({
     // Load available function evaluations
     loadAvailableFunctions();
   }, []);
+
+  // Filter out already selected function evaluations
+  const availableFunctionsToShow = useMemo(() => {
+    const selectedFunctionNames = new Set(functionEvalConfigs.map(config => config.function_name));
+    return availableFunctions.filter(func => !selectedFunctionNames.has(func.name));
+  }, [availableFunctions, functionEvalConfigs]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -386,7 +392,7 @@ export default function FunctionEvaluationsPanel({
               }}
             >
               <option value="">Select a function...</option>
-              {availableFunctions.map((func) => (
+              {availableFunctionsToShow.map((func) => (
                 <option key={func.name} value={func.name}>
                   {func.name}
                 </option>

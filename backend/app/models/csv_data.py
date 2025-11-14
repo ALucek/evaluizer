@@ -20,6 +20,7 @@ class CSVFile(Base):
     judge_results = relationship("JudgeResult", back_populates="csv_file", cascade="all, delete-orphan")
     function_eval_configs = relationship("FunctionEvalConfig", back_populates="csv_file", cascade="all, delete-orphan")
     function_eval_results = relationship("FunctionEvalResult", back_populates="csv_file", cascade="all, delete-orphan")
+    metrics = relationship("Metric", back_populates="csv_file", cascade="all, delete-orphan")
 
 
 class CSVRow(Base):

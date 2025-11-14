@@ -13,6 +13,7 @@ from app.models.evaluation import Evaluation
 from app.models.prompt import Prompt
 from app.models.judge import JudgeConfig, JudgeResult
 from app.models.function_eval import FunctionEvalConfig, FunctionEvalResult
+from app.models.metric import Metric
 from app.utils import parse_json_safe, get_or_404
 from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
@@ -362,10 +363,86 @@ async def export_csv_with_evaluations(
     csv_output.seek(0)
     csv_content = csv_output.getvalue()
     
+    # Get all metrics for this CSV file
+    metrics = db.query(Metric).filter(Metric.csv_file_id == csv_id).all()
+    
+    # Calculate actual aggregates
+    # Human annotation average
+    annotations_with_values = [e for e in evaluations if e.annotation is not None]
+    human_annotation_avg = None
+    human_annotation_count = 0
+    if annotations_with_values:
+        human_annotation_avg = sum(e.annotation for e in annotations_with_values) / len(annotations_with_values)
+        human_annotation_count = len(annotations_with_values)
+    
+    # Judge averages by config
+    judge_averages_by_config = {}
+    for config in judge_configs:
+        config_results = [r for r in judge_results if r.config_id == config.id]
+        if config_results:
+            judge_averages_by_config[config.id] = {
+                'average': sum(r.score for r in config_results) / len(config_results),
+                'count': len(config_results),
+                'name': config.name
+            }
+    
+    # Function eval averages by config
+    function_eval_averages_by_config = {}
+    for config in function_eval_configs:
+        config_results = [r for r in function_eval_results if r.config_id == config.id]
+        if config_results:
+            function_eval_averages_by_config[config.id] = {
+                'average': sum(r.score for r in config_results) / len(config_results),
+                'count': len(config_results),
+                'name': config.name
+            }
+    
+    # Build metrics report as a simple table
+    metrics_report_lines = []
+    metrics_report_lines.append("Metric Name,Average Score,Threshold")
+    
+    # Human annotation metrics (only include if there are annotations)
+    if human_annotation_avg is not None:
+        human_annotation_metrics = [m for m in metrics if m.metric_type == 'human_annotation']
+        threshold = human_annotation_metrics[0].threshold if human_annotation_metrics else None
+        threshold_str = f"{threshold:.2f}" if threshold is not None else ""
+        metrics_report_lines.append(f"Human Annotation,{human_annotation_avg:.2f},{threshold_str}")
+    
+    # Judge metrics - include all judge configs
+    for config in judge_configs:
+        judge_metric = next((m for m in metrics if m.metric_type == 'judge' and m.config_id == config.id), None)
+        threshold = judge_metric.threshold if judge_metric else None
+        threshold_str = f"{threshold:.2f}" if threshold is not None else ""
+        
+        if config.id in judge_averages_by_config:
+            avg_data = judge_averages_by_config[config.id]
+            avg_str = f"{avg_data['average']:.2f}"
+        else:
+            avg_str = ""
+        
+        metrics_report_lines.append(f"{config.name},{avg_str},{threshold_str}")
+    
+    # Function eval metrics - include all function eval configs
+    for config in function_eval_configs:
+        function_eval_metric = next((m for m in metrics if m.metric_type == 'function_eval' and m.config_id == config.id), None)
+        threshold = function_eval_metric.threshold if function_eval_metric else None
+        threshold_str = f"{threshold:.2f}" if threshold is not None else ""
+        
+        if config.id in function_eval_averages_by_config:
+            avg_data = function_eval_averages_by_config[config.id]
+            avg_str = f"{avg_data['average']:.2f}"
+        else:
+            avg_str = ""
+        
+        metrics_report_lines.append(f"{config.name},{avg_str},{threshold_str}")
+    
+    metrics_report_content = "\n".join(metrics_report_lines)
+    
     # Generate filenames
     base_filename = csv_file.filename.rsplit('.', 1)[0] if '.' in csv_file.filename else csv_file.filename
     csv_filename = f"{base_filename}_export.csv"
     prompt_filename = f"{base_filename}_prompt.txt"
+    metrics_filename = f"{base_filename}_metrics.csv"
     zip_filename = f"{base_filename}_export.zip"
     
     # Create ZIP file in memory
@@ -376,6 +453,9 @@ async def export_csv_with_evaluations(
         
         # Add prompt file to ZIP
         zip_file.writestr(prompt_filename, prompt_content.encode('utf-8'))
+        
+        # Add metrics report as CSV to ZIP
+        zip_file.writestr(metrics_filename, metrics_report_content.encode('utf-8'))
     
     zip_buffer.seek(0)
     

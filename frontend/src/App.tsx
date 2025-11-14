@@ -5,6 +5,7 @@ import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColu
 import PromptEditor, { LLMConfig } from './components/PromptEditor';
 import JudgeEvaluationsPanel from './components/JudgeEvaluationsPanel';
 import FunctionEvaluationsPanel from './components/FunctionEvaluationsPanel';
+import OptimizerPanel from './components/OptimizerPanel';
 import './index.css';
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
   const [functionEvalConfigs, setFunctionEvalConfigs] = useState<FunctionEvalConfig[]>([]);
   const [functionEvalResults, setFunctionEvalResults] = useState<FunctionEvalResult[]>([]);
   const [latestFunctionEvalResult, setLatestFunctionEvalResult] = useState<FunctionEvalResult | null>(null);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
 
   const loadCSVFiles = async (): Promise<CSVData[]> => {
     try {
@@ -161,6 +163,16 @@ function App() {
     }
   };
 
+  const loadEvaluations = async (csvFileId: number) => {
+    try {
+      const evals = await getEvaluationsForCSV(csvFileId);
+      setEvaluations(evals);
+    } catch (err) {
+      console.error('Failed to load evaluations:', err);
+      setEvaluations([]);
+    }
+  };
+
   useEffect(() => {
     selectedFileIdRef.current = selectedFileId;
     if (selectedFileId) {
@@ -171,6 +183,7 @@ function App() {
       loadJudgeResults(selectedFileId);
       loadFunctionEvalConfigs(selectedFileId);
       loadFunctionEvalResults(selectedFileId);
+      loadEvaluations(selectedFileId);
     } else {
       setCsvData(null);
       setCurrentPrompt(null);
@@ -180,6 +193,7 @@ function App() {
       setJudgeResults([]);
       setFunctionEvalConfigs([]);
       setFunctionEvalResults([]);
+      setEvaluations([]);
     }
   }, [selectedFileId]);
 
@@ -259,12 +273,56 @@ function App() {
 
   const handleUpdateRow = async (rowId: number, annotation?: number | null, feedback?: string) => {
     if (!selectedFileId) return;
+    
+    // Store optimistic update values
+    const optimisticAnnotation = annotation !== undefined ? annotation : undefined;
+    const optimisticFeedback = feedback !== undefined ? feedback : undefined;
+    
     try {
+      // Optimistically update evaluations array for immediate UI feedback
+      setEvaluations(prev => {
+        const index = prev.findIndex(e => e.csv_row_id === rowId);
+        if (index >= 0) {
+          // Update existing evaluation
+          const updated = [...prev];
+          updated[index] = { 
+            ...updated[index], 
+            annotation: optimisticAnnotation !== undefined ? optimisticAnnotation : updated[index].annotation,
+            feedback: optimisticFeedback !== undefined ? optimisticFeedback : updated[index].feedback 
+          };
+          return updated;
+        }
+        // If not found, create a new entry
+        const newEval: Evaluation = {
+          id: 0, // Temporary ID, will be replaced on reload
+          csv_file_id: selectedFileId!,
+          csv_row_id: rowId,
+          output: null,
+          annotation: optimisticAnnotation !== undefined ? optimisticAnnotation : null,
+          feedback: optimisticFeedback !== undefined ? optimisticFeedback : null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        return [...prev, newEval];
+      });
+      
+      // Update backend
       await updateEvaluation(rowId, undefined, annotation, feedback);
+      
+      // Reload evaluations after a brief delay to ensure server has processed the update
+      // This ensures consistency while preserving the optimistic update until reload completes
+      setTimeout(async () => {
+        await loadEvaluations(selectedFileId);
+      }, 100);
+      
       // Note: DataTable component handles its own state synchronization by refetching
       // evaluations from the backend after updates, ensuring SSOT consistency.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update row');
+      // Reload on error to ensure consistency
+      if (selectedFileId) {
+        await loadEvaluations(selectedFileId);
+      }
     }
   };
 
@@ -497,6 +555,10 @@ function App() {
       setIsRunningAll(false);
       setIsCancelling(false);
       cancellationRef.current = false; // Reset cancellation flag
+      // Reload evaluations to update OptimizerPanel dashboard
+      if (selectedFileId) {
+        await loadEvaluations(selectedFileId);
+      }
       // Clear latestEvaluation after a brief delay to allow last update to process
       // But don't reload all data - incremental updates are already handled
       setTimeout(() => {
@@ -1018,7 +1080,20 @@ function App() {
                 isCancelling={isCancelling}
               />
               
-              {/* Evaluations Panel */}
+              {/* Optimizer Panel */}
+              <OptimizerPanel
+                csvFileId={selectedFileId}
+                evaluations={evaluations}
+                judgeResults={judgeResults}
+                judgeConfigs={judgeConfigs}
+                functionEvalResults={functionEvalResults}
+                functionEvalConfigs={functionEvalConfigs}
+                latestEvaluation={latestEvaluation}
+                latestJudgeResult={latestJudgeResult}
+                latestFunctionEvalResult={latestFunctionEvalResult}
+              />
+              
+              {/* LLM as a Judge Panel */}
               <JudgeEvaluationsPanel
                 csvFileId={selectedFileId}
                 judgeConfigs={judgeConfigs}
@@ -1035,7 +1110,7 @@ function App() {
                 isCancellingJudge={isCancellingJudge}
               />
               
-              {/* Function Evaluations Panel */}
+              {/* Evaluations Panel */}
               <FunctionEvaluationsPanel
                 csvFileId={selectedFileId}
                 functionEvalConfigs={functionEvalConfigs}

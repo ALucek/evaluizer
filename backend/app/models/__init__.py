@@ -3,5 +3,6 @@ from app.models.evaluation import Evaluation
 from app.models.prompt import Prompt
 from app.models.judge import JudgeConfig, JudgeResult
 from app.models.function_eval import FunctionEvalConfig, FunctionEvalResult
+from app.models.metric import Metric
 
-__all__ = ["CSVFile", "CSVRow", "Evaluation", "Prompt", "JudgeConfig", "JudgeResult", "FunctionEvalConfig", "FunctionEvalResult"]
+__all__ = ["CSVFile", "CSVRow", "Evaluation", "Prompt", "JudgeConfig", "JudgeResult", "FunctionEvalConfig", "FunctionEvalResult", "Metric"]

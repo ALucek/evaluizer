@@ -92,6 +92,16 @@ export interface FunctionEvalResult {
   updated_at: string;
 }
 
+export interface Metric {
+  id: number;
+  csv_file_id: number;
+  metric_type: 'human_annotation' | 'judge' | 'function_eval';
+  config_id: number | null;
+  threshold: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Legacy type alias for backward compatibility during migration
 export type CSVData = CSVFile;
 export type CSVDataWithRows = CSVFileWithRows;
@@ -1140,6 +1150,98 @@ export async function deleteFunctionEvalResultsForConfig(configId: number): Prom
     
     if (!response.ok) {
       let errorMessage = `Failed to delete function eval results: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// Metric/Threshold API functions
+export async function listMetrics(csvFileId: number): Promise<Metric[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/csv/${csvFileId}/metrics`);
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to list metrics: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function createOrUpdateMetric(
+  csvFileId: number,
+  metricType: 'human_annotation' | 'judge' | 'function_eval',
+  threshold: number,
+  configId?: number | null
+): Promise<Metric> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metrics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        csv_file_id: csvFileId,
+        metric_type: metricType,
+        config_id: configId ?? null,
+        threshold: threshold,
+      }),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to create/update metric: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteMetric(metricId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metrics/${metricId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete metric: ${response.status}`;
       try {
         const errorData = await response.json();
         errorMessage = errorData.detail || errorMessage;
