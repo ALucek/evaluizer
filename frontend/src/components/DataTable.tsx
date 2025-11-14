@@ -1073,9 +1073,9 @@ export default function DataTable({
                 disabled={isRowRunning || isRunningAll}
               style={{
                 padding: '0.25rem 0.5rem',
-                  backgroundColor: (isRowRunning || isRunningAll) ? 'var(--bg-tertiary)' : 'var(--accent-primary)',
-                color: 'white',
-                border: 'none',
+                  backgroundColor: 'transparent',
+                color: (isRowRunning || isRunningAll) ? 'var(--text-tertiary)' : 'var(--accent-primary)',
+                border: `1px solid ${(isRowRunning || isRunningAll) ? 'var(--border-primary)' : 'var(--accent-primary)'}`,
                 borderRadius: '0',
                   cursor: (isRowRunning || isRunningAll) ? 'not-allowed' : 'pointer',
                 fontSize: '0.6875rem',
@@ -1085,10 +1085,11 @@ export default function DataTable({
                   flexShrink: 0,
                 transition: 'none',
                 textTransform: 'uppercase',
+                opacity: (isRowRunning || isRunningAll) ? 0.4 : 1,
               }}
               onMouseEnter={(e) => {
                 if (!isRowRunning && !isRunningAll) {
-                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
                   e.currentTarget.style.outlineOffset = '-2px';
                 }
               }}
@@ -1371,9 +1372,9 @@ export default function DataTable({
                 disabled={isRunDisabled}
                 style={{
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: isRunDisabled ? 'var(--bg-tertiary)' : 'var(--accent-success)',
-                  color: isRunDisabled ? 'var(--text-tertiary)' : '#000000',
-                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: isRunDisabled ? 'var(--text-tertiary)' : 'var(--accent-success)',
+                  border: `1px solid ${isRunDisabled ? 'var(--border-primary)' : 'var(--accent-success)'}`,
                   borderRadius: '0',
                   cursor: isRunDisabled ? 'not-allowed' : 'pointer',
                   fontSize: '0.6875rem',
@@ -1387,7 +1388,7 @@ export default function DataTable({
                 }}
                 onMouseEnter={(e) => {
                   if (!isRunDisabled) {
-                    e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                    e.currentTarget.style.outline = '2px solid var(--accent-success)';
                     e.currentTarget.style.outlineOffset = '-2px';
                   }
                 }}
@@ -1480,9 +1481,9 @@ export default function DataTable({
                 disabled={isRunDisabled}
                 style={{
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: isRunDisabled ? 'var(--bg-tertiary)' : 'var(--accent-success)',
-                  color: isRunDisabled ? 'var(--text-tertiary)' : '#000000',
-                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: isRunDisabled ? 'var(--text-tertiary)' : 'var(--accent-success)',
+                  border: `1px solid ${isRunDisabled ? 'var(--border-primary)' : 'var(--accent-success)'}`,
                   borderRadius: '0',
                   cursor: isRunDisabled ? 'not-allowed' : 'pointer',
                   fontSize: '0.6875rem',
@@ -1496,7 +1497,7 @@ export default function DataTable({
                 }}
                 onMouseEnter={(e) => {
                   if (!isRunDisabled) {
-                    e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                    e.currentTarget.style.outline = '2px solid var(--accent-success)';
                     e.currentTarget.style.outlineOffset = '-2px';
                   }
                 }}

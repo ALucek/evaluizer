@@ -3,8 +3,7 @@ import CSVFileList from './components/CSVFileList';
 import DataTable from './components/DataTable';
 import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName, JudgeConfig, JudgeResult, listJudgeConfigs, createJudgeConfig, updateJudgeConfig, deleteJudgeConfig, getJudgeResultsForCSV, runJudge, deleteJudgeResult, deleteJudgeResultsForConfig, getEvaluationsForCSV, FunctionEvalConfig, FunctionEvalResult, listFunctionEvalConfigs, createFunctionEvalConfig, updateFunctionEvalConfig, deleteFunctionEvalConfig, getFunctionEvalResultsForCSV, runFunctionEval, deleteFunctionEvalResult, deleteFunctionEvalResultsForConfig } from './services/api';
 import PromptEditor, { LLMConfig } from './components/PromptEditor';
-import JudgeEvaluationsPanel from './components/JudgeEvaluationsPanel';
-import FunctionEvaluationsPanel from './components/FunctionEvaluationsPanel';
+import CombinedEvaluationsPanel from './components/CombinedEvaluationsPanel';
 import OptimizerPanel from './components/OptimizerPanel';
 import './index.css';
 
@@ -899,7 +898,7 @@ function App() {
     }
   };
 
-  const handleRunFunctionEvalForAllRows = async (configId: number) => {
+  const handleRunFunctionEvalForAllRows = async (configId: number, concurrency: number = 10) => {
     if (!selectedFileId || !csvData) return;
     
     try {
@@ -925,18 +924,39 @@ function App() {
         return;
       }
 
-      // Run for all valid rows sequentially (simple for Phase 2)
-      for (const rowId of validRowIds) {
-        try {
-          const result = await runFunctionEval(configId, rowId);
-          setLatestFunctionEvalResult(result);
-          setFunctionEvalResults(prev => {
-            const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
-            return [...next, result];
-          });
-        } catch (err) {
-          console.error(`Error running function eval for row ${rowId}:`, err);
-        }
+      const config = functionEvalConfigs.find(c => c.id === configId);
+      if (!config) {
+        throw new Error('Function eval config not found');
+      }
+
+      const concurrencyLimit = concurrency || 10; // Use provided concurrency or default to 10
+      const batches: number[][] = [];
+      
+      for (let i = 0; i < validRowIds.length; i += concurrencyLimit) {
+        batches.push(validRowIds.slice(i, i + concurrencyLimit));
+      }
+
+      for (const batch of batches) {
+        const batchPromises = batch.map(async (rowId) => {
+          try {
+            const result = await runFunctionEval(configId, rowId);
+            // Update incrementally as each result comes in
+            setTimeout(() => {
+              setLatestFunctionEvalResult(result);
+              setFunctionEvalResults(prev => {
+                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+                return [...next, result];
+              });
+            }, 0);
+            return { success: true, rowId, result };
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : `Failed to run function eval for row ${rowId}`;
+            setError(errorMessage);
+            return { success: false, rowId, error: err };
+          }
+        });
+
+        await Promise.allSettled(batchPromises);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run function evaluations');
@@ -1093,11 +1113,13 @@ function App() {
                 latestFunctionEvalResult={latestFunctionEvalResult}
               />
               
-              {/* LLM as a Judge Panel */}
-              <JudgeEvaluationsPanel
+              {/* Combined Evaluations Panel */}
+              <CombinedEvaluationsPanel
                 csvFileId={selectedFileId}
                 judgeConfigs={judgeConfigs}
-                onConfigsChange={setJudgeConfigs}
+                functionEvalConfigs={functionEvalConfigs}
+                onJudgeConfigsChange={setJudgeConfigs}
+                onFunctionEvalConfigsChange={setFunctionEvalConfigs}
                 columns={currentColumns}
                 onRunJudgeForAllRows={handleRunJudgeForAllRows}
                 onClearJudgeForAllRows={handleClearJudgeForAllRows}
@@ -1108,13 +1130,6 @@ function App() {
                 runningJudgeConfigId={runningJudgeConfigId}
                 onCancelJudge={handleCancelJudge}
                 isCancellingJudge={isCancellingJudge}
-              />
-              
-              {/* Evaluations Panel */}
-              <FunctionEvaluationsPanel
-                csvFileId={selectedFileId}
-                functionEvalConfigs={functionEvalConfigs}
-                onConfigsChange={setFunctionEvalConfigs}
                 onCreateFunctionEvalConfig={handleCreateFunctionEvalConfig}
                 onUpdateFunctionEvalConfig={handleUpdateFunctionEvalConfig}
                 onDeleteFunctionEvalConfig={handleDeleteFunctionEvalConfig}

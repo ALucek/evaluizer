@@ -534,9 +534,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               style={{
                 flex: 1,
                 padding: '0.5rem 1rem',
-                backgroundColor: (isRunning || !validation.isValid || !prompt) ? 'var(--bg-tertiary)' : 'var(--accent-success)',
-                color: (isRunning || !validation.isValid || !prompt) ? 'var(--text-tertiary)' : '#000000',
-                border: 'none',
+                backgroundColor: 'transparent',
+                color: (isRunning || !validation.isValid || !prompt) ? 'var(--text-tertiary)' : 'var(--accent-success)',
+                border: `1px solid ${(isRunning || !validation.isValid || !prompt) ? 'var(--border-primary)' : 'var(--accent-success)'}`,
                 borderRadius: '0',
                 cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
                 fontSize: '0.75rem',
@@ -548,7 +548,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               }}
               onMouseEnter={(e) => {
                 if (!isRunning && validation.isValid && prompt) {
-                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outline = '2px solid var(--accent-success)';
                   e.currentTarget.style.outlineOffset = '-2px';
                 }
               }}
