@@ -48,6 +48,29 @@ export interface Prompt {
   updated_at: string;
 }
 
+export interface JudgeConfig {
+  id: number;
+  csv_file_id: number;
+  name: string;
+  prompt: string;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JudgeResult {
+  id: number;
+  config_id: number;
+  csv_file_id: number;
+  csv_row_id: number;
+  score: number;
+  raw_output: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Legacy type alias for backward compatibility during migration
 export type CSVData = CSVFile;
 export type CSVDataWithRows = CSVFileWithRows;
@@ -616,6 +639,243 @@ export async function runPrompt(config: RunPromptConfig): Promise<Evaluation> {
     }
 
     return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// Judge evaluation API functions
+
+export async function listJudgeConfigs(csvFileId: number): Promise<JudgeConfig[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/configs?csv_file_id=${csvFileId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch judge configs: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function createJudgeConfig(
+  csvFileId: number,
+  name: string,
+  prompt: string,
+  llmConfig: { model: string; temperature: number; maxTokens: number }
+): Promise<JudgeConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/configs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        csv_file_id: csvFileId,
+        name,
+        prompt,
+        model: llmConfig.model,
+        temperature: llmConfig.temperature,
+        max_tokens: llmConfig.maxTokens,
+      }),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to create judge config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function updateJudgeConfig(
+  id: number,
+  partial: {
+    name?: string;
+    prompt?: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  }
+): Promise<JudgeConfig> {
+  try {
+    const body: any = {};
+    if (partial.name !== undefined) body.name = partial.name;
+    if (partial.prompt !== undefined) body.prompt = partial.prompt;
+    if (partial.model !== undefined) body.model = partial.model;
+    if (partial.temperature !== undefined) body.temperature = partial.temperature;
+    if (partial.maxTokens !== undefined) body.max_tokens = partial.maxTokens;
+
+    const response = await fetch(`${API_BASE_URL}/judge/configs/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to update judge config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteJudgeConfig(id: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/configs/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete judge config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function getJudgeResultsForCSV(csvId: number): Promise<JudgeResult[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/results/csv/${csvId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch judge results: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function runJudge(config: { configId: number; csvRowId: number }): Promise<JudgeResult> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        config_id: config.configId,
+        csv_row_id: config.csvRowId,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Failed to run judge: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteJudgeResult(configId: number, rowId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/results/config/${configId}/row/${rowId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete judge result: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteJudgeResultsForConfig(configId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/judge/results/config/${configId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete judge results: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');

@@ -16,6 +16,8 @@ class CSVFile(Base):
     
     rows = relationship("CSVRow", back_populates="csv_file", cascade="all, delete-orphan")
     evaluations = relationship("Evaluation", back_populates="csv_file", cascade="all, delete-orphan")
+    judge_configs = relationship("JudgeConfig", back_populates="csv_file", cascade="all, delete-orphan")
+    judge_results = relationship("JudgeResult", back_populates="csv_file", cascade="all, delete-orphan")
 
 
 class CSVRow(Base):
@@ -28,3 +30,4 @@ class CSVRow(Base):
     
     csv_file = relationship("CSVFile", back_populates="rows")
     evaluation = relationship("Evaluation", back_populates="csv_row", uselist=False, cascade="all, delete-orphan")
+    judge_results = relationship("JudgeResult", back_populates="csv_row", cascade="all, delete-orphan")

@@ -6,7 +6,7 @@ from app.config import API_V1_PREFIX, CORS_ORIGINS
 from app.database import engine, Base
 
 # Import all models to ensure they're registered with SQLAlchemy
-from app.models import CSVFile, CSVRow, Evaluation, Prompt  # noqa: F401
+from app.models import CSVFile, CSVRow, Evaluation, Prompt, JudgeConfig, JudgeResult  # noqa: F401
 
 # Create database tables (only creates if they don't exist)
 Base.metadata.create_all(bind=engine)

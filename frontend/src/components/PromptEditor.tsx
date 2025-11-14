@@ -20,14 +20,14 @@ interface PromptEditorProps {
   llmConfig: LLMConfig;
   onLLMConfigChange: (config: LLMConfig) => void;
   onRunAll?: () => Promise<void>;
+  onClearAllOutputs?: () => Promise<void>;
   onCancel?: () => void;
   isRunning?: boolean;
   isRunningAll?: boolean;
   isCancelling?: boolean;
-  error?: string | null;
 }
 
-export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, onCancel, isRunning = false, isRunningAll = false, isCancelling = false, error }: PromptEditorProps) {
+export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
   const [value, setValue] = useState(prompt?.content || '');
   const [promptName, setPromptName] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
@@ -252,7 +252,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         gap: '1rem',
       }}>
       <div>
-        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT TEMPLATE</h2>
+        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT</h2>
         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
           USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO INSERT COLUMN VALUES
         </p>
@@ -440,7 +440,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
       )}
 
       {/* Warning and Error Messages */}
-      {((!prompt || !validation.isValid) || error) && (
+      {(!prompt || !validation.isValid) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {!validation.isValid && (
             <div style={{
@@ -476,66 +476,50 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               WARNING: SAVE A VALID PROMPT TEMPLATE BEFORE RUNNING
             </div>
           )}
-          
-          {error && (
-            <div style={{
-              padding: '0.5rem 0.75rem',
-              backgroundColor: 'var(--bg-secondary)',
-              color: 'var(--accent-danger)',
-              borderRadius: '0',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              fontFamily: 'monospace',
-              border: '1px solid var(--accent-danger)',
-              textTransform: 'uppercase',
-            }}>
-              {error}
-            </div>
-          )}
         </div>
       )}
 
-      {/* Run All Button / Cancel Button */}
-      {onRunAll && (
-        <div>
-          {isRunningAll && onCancel ? (
-            <button
-              onClick={() => {
-                if (onCancel) {
-                  onCancel();
-                }
-              }}
-              disabled={isCancelling}
-              style={{
-                width: '100%',
-                padding: '0.5rem 1rem',
-                backgroundColor: isCancelling ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0',
-                cursor: isCancelling ? 'not-allowed' : 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                fontFamily: 'monospace',
-                transition: 'none',
-                opacity: isCancelling ? 0.5 : 1,
-                textTransform: 'uppercase',
-              }}
-              onMouseEnter={(e) => {
-                if (!isCancelling) {
-                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
-                  e.currentTarget.style.outlineOffset = '-2px';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isCancelling) {
-                  e.currentTarget.style.outline = 'none';
-                }
-              }}
-            >
-              {isCancelling ? 'CANCELLING...' : 'CANCEL RUNNING'}
-            </button>
-          ) : (
+      {/* Run All / Clear All Buttons / Cancel Button */}
+      {isRunningAll && onCancel ? (
+        <button
+          onClick={() => {
+            if (onCancel) {
+              onCancel();
+            }
+          }}
+          disabled={isCancelling}
+          style={{
+            width: '100%',
+            padding: '0.5rem 1rem',
+            backgroundColor: isCancelling ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0',
+            cursor: isCancelling ? 'not-allowed' : 'pointer',
+            fontSize: '0.75rem',
+            fontWeight: '700',
+            fontFamily: 'monospace',
+            transition: 'none',
+            opacity: isCancelling ? 0.5 : 1,
+            textTransform: 'uppercase',
+          }}
+          onMouseEnter={(e) => {
+            if (!isCancelling) {
+              e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+              e.currentTarget.style.outlineOffset = '-2px';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isCancelling) {
+              e.currentTarget.style.outline = 'none';
+            }
+          }}
+        >
+          {isCancelling ? 'CANCELLING...' : 'CANCEL RUNNING'}
+        </button>
+      ) : (onRunAll || onClearAllOutputs) && (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {onRunAll && (
             <button
               onClick={async () => {
                 if (onRunAll) {
@@ -548,7 +532,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               }}
               disabled={isRunning || !validation.isValid || !prompt}
               style={{
-                width: '100%',
+                flex: 1,
                 padding: '0.5rem 1rem',
                 backgroundColor: (isRunning || !validation.isValid || !prompt) ? 'var(--bg-tertiary)' : 'var(--accent-success)',
                 color: (isRunning || !validation.isValid || !prompt) ? 'var(--text-tertiary)' : '#000000',
@@ -575,6 +559,50 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               }}
             >
               {isRunning ? 'RUNNING...' : 'RUN ALL ROWS'}
+            </button>
+          )}
+          {onClearAllOutputs && (
+            <button
+              onClick={async () => {
+                if (window.confirm(`Are you sure you want to clear ALL outputs for ALL rows? This action cannot be undone.`)) {
+                  if (onClearAllOutputs) {
+                    try {
+                      await onClearAllOutputs();
+                    } catch (err) {
+                      // Error handling is done in parent component
+                    }
+                  }
+                }
+              }}
+              disabled={isRunning}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                color: isRunning ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: '0',
+                cursor: isRunning ? 'not-allowed' : 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                textTransform: 'uppercase',
+                opacity: isRunning ? 0.4 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!isRunning) {
+                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRunning) {
+                  e.currentTarget.style.outline = 'none';
+                }
+              }}
+            >
+              CLEAR ALL
             </button>
           )}
         </div>
@@ -1052,22 +1080,23 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
             {/* Versions List - Show only versions for selected prompt */}
             {selectedPromptName && selectedPromptVersions.length > 0 && (
-              <div style={{
-                padding: '0.75rem',
-                backgroundColor: 'var(--bg-secondary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: '0',
-              }}>
+              <div>
                 <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   VERSIONS:
                 </div>
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.375rem',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
                 }}>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.375rem',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                  }}>
                   {selectedPromptVersions.map((v) => (
                     <div
                       key={v.id}
@@ -1178,6 +1207,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       )}
                     </div>
                   ))}
+                  </div>
                 </div>
               </div>
             )}

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, startTransition } from 'react';
 import CSVFileList from './components/CSVFileList';
 import DataTable from './components/DataTable';
-import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName } from './services/api';
+import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName, JudgeConfig, JudgeResult, listJudgeConfigs, createJudgeConfig, updateJudgeConfig, deleteJudgeConfig, getJudgeResultsForCSV, runJudge, deleteJudgeResult, deleteJudgeResultsForConfig, getEvaluationsForCSV } from './services/api';
 import PromptEditor, { LLMConfig } from './components/PromptEditor';
+import JudgeEvaluationsPanel from './components/JudgeEvaluationsPanel';
 import './index.css';
 
 function App() {
@@ -28,6 +29,14 @@ function App() {
   const [latestEvaluation, setLatestEvaluation] = useState<Evaluation | null>(null);
   const [clearAllOutputs, setClearAllOutputs] = useState(false);
   const cancellationRef = useRef<boolean>(false);
+  const [judgeConfigs, setJudgeConfigs] = useState<JudgeConfig[]>([]);
+  const [judgeResults, setJudgeResults] = useState<JudgeResult[]>([]);
+  const [latestJudgeResult, setLatestJudgeResult] = useState<JudgeResult | null>(null);
+  const [isRunningJudge, setIsRunningJudge] = useState(false);
+  const [runningJudgeConfigId, setRunningJudgeConfigId] = useState<number | null>(null);
+  const [runningJudgeCells, setRunningJudgeCells] = useState<Set<string>>(new Set());
+  const [isCancellingJudge, setIsCancellingJudge] = useState(false);
+  const judgeCancellationRef = useRef<boolean>(false);
 
   const loadCSVFiles = async (): Promise<CSVData[]> => {
     try {
@@ -108,17 +117,41 @@ function App() {
     }
   };
 
+  const loadJudgeConfigs = async (csvFileId: number) => {
+    try {
+      const configs = await listJudgeConfigs(csvFileId);
+      setJudgeConfigs(configs);
+    } catch (err) {
+      console.error('Failed to load judge configs:', err);
+      setJudgeConfigs([]);
+    }
+  };
+
+  const loadJudgeResults = async (csvFileId: number) => {
+    try {
+      const results = await getJudgeResultsForCSV(csvFileId);
+      setJudgeResults(results);
+    } catch (err) {
+      console.error('Failed to load judge results:', err);
+      setJudgeResults([]);
+    }
+  };
+
   useEffect(() => {
     selectedFileIdRef.current = selectedFileId;
     if (selectedFileId) {
       loadCSVData(selectedFileId);
       loadPrompt(selectedFileId);
       loadGroupedPrompts(selectedFileId);
+      loadJudgeConfigs(selectedFileId);
+      loadJudgeResults(selectedFileId);
     } else {
       setCsvData(null);
       setCurrentPrompt(null);
       setPromptVersions([]);
       setGroupedPrompts({});
+      setJudgeConfigs([]);
+      setJudgeResults([]);
     }
   }, [selectedFileId]);
 
@@ -459,6 +492,231 @@ function App() {
     setIsCancelling(true);
   };
 
+  const handleClearAllOutputs = async () => {
+    if (!csvData || !selectedFileId) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      const allRowIds = csvData.rows.map(row => row.id);
+      
+      // Immediately update UI to show cleared outputs
+      setClearAllOutputs(true);
+      
+      // Clear all evaluation outputs
+      const clearPromises = allRowIds.map(rowId => 
+        updateEvaluation(rowId, "", null, null)
+      );
+      await Promise.all(clearPromises);
+      
+      // Clear all judge evaluation scores for all rows (similar to individual row clearing)
+      if (judgeConfigs.length > 0) {
+        await Promise.allSettled(
+          judgeConfigs.map(config => 
+            deleteJudgeResultsForConfig(config.id).catch((err: any) => {
+              console.error(`Error clearing judge results for config ${config.id}:`, err);
+            })
+          )
+        );
+        // Reload judge results to update UI
+        await loadJudgeResults(selectedFileId);
+      }
+      
+      // Reset the flag after a brief moment so it can be reused
+      setTimeout(() => {
+        setClearAllOutputs(false);
+      }, 100);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear all outputs');
+    }
+  };
+
+  const handleCreateJudgeConfig = async (name: string, prompt: string, llmConfig: LLMConfig): Promise<JudgeConfig> => {
+    if (!selectedFileId) {
+      throw new Error('No CSV file selected');
+    }
+    try {
+      setError(null);
+      const config = await createJudgeConfig(selectedFileId, name, prompt, {
+        model: llmConfig.model,
+        temperature: llmConfig.temperature,
+        maxTokens: llmConfig.maxTokens,
+      });
+      await loadJudgeConfigs(selectedFileId);
+      return config;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create judge config');
+      throw err;
+    }
+  };
+
+  const handleUpdateJudgeConfig = async (id: number, partial: { name?: string; prompt?: string; model?: string; temperature?: number; maxTokens?: number }) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await updateJudgeConfig(id, partial);
+      await loadJudgeConfigs(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update judge config');
+      throw err;
+    }
+  };
+
+  const handleDeleteJudgeConfig = async (id: number) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await deleteJudgeConfig(id);
+      await loadJudgeConfigs(selectedFileId);
+      await loadJudgeResults(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete judge config');
+      throw err;
+    }
+  };
+
+  const handleRunJudgeForRow = async (configId: number, rowId: number) => {
+    const cellKey = `${configId}-${rowId}`;
+    try {
+      setRunningJudgeCells(prev => new Set(prev).add(cellKey));
+      const result = await runJudge({ configId, csvRowId: rowId });
+      // Update incrementally as result comes in (similar to latestEvaluation)
+      // Update both synchronously to trigger immediate UI update
+      setLatestJudgeResult(result);
+      setJudgeResults(prev => {
+        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+        return [...next, result];
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run judge evaluation');
+    } finally {
+      setRunningJudgeCells(prev => {
+        const next = new Set(prev);
+        next.delete(cellKey);
+        return next;
+      });
+    }
+  };
+
+  const handleRunJudgeForAllRows = async (configId: number, concurrency: number = 10) => {
+    if (!selectedFileId || !csvData) return;
+    
+    judgeCancellationRef.current = false;
+    setIsRunningJudge(true);
+    setRunningJudgeConfigId(configId);
+    setError(null);
+
+    try {
+      // Fetch evaluations to check which rows have outputs
+      const evaluations = await getEvaluationsForCSV(selectedFileId);
+      const evaluationsByRowId = new Map<number, Evaluation>();
+      evaluations.forEach(evaluation => {
+        evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
+      });
+
+      // Filter to only rows that have outputs
+      const validRowIds = csvData.rows
+        .filter(row => {
+          const evaluation = evaluationsByRowId.get(row.id);
+          const output = evaluation?.output;
+          return output !== null && output !== undefined && output !== '';
+        })
+        .map(row => row.id);
+
+      if (validRowIds.length === 0) {
+        setError('No rows with outputs found. Run prompts first to generate outputs.');
+        return;
+      }
+
+      const config = judgeConfigs.find(c => c.id === configId);
+      if (!config) {
+        throw new Error('Judge config not found');
+      }
+
+      const concurrencyLimit = concurrency || 10; // Use provided concurrency or default to 10
+      const batches: number[][] = [];
+      
+      for (let i = 0; i < validRowIds.length; i += concurrencyLimit) {
+        batches.push(validRowIds.slice(i, i + concurrencyLimit));
+      }
+
+      for (const batch of batches) {
+        if (judgeCancellationRef.current) {
+          break;
+        }
+        
+        const batchPromises = batch.map(async (rowId) => {
+          if (judgeCancellationRef.current) {
+            return { success: false, rowId, error: new Error('Cancelled') };
+          }
+          
+          try {
+            const result = await runJudge({ configId, csvRowId: rowId });
+            // Update incrementally as each result comes in (similar to latestEvaluation)
+            // Update both synchronously to trigger immediate UI update
+            setLatestJudgeResult(result);
+            setJudgeResults(prev => {
+              const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+              return [...next, result];
+            });
+            return { success: true, rowId, result };
+          } catch (err) {
+            if (!judgeCancellationRef.current) {
+              const errorMessage = err instanceof Error ? err.message : `Failed to run judge for row ${rowId}`;
+              setError(errorMessage);
+            }
+            return { success: false, rowId, error: err };
+          }
+        });
+
+        await Promise.allSettled(batchPromises);
+        
+        if (judgeCancellationRef.current) {
+          break;
+        }
+      }
+    } catch (err) {
+      if (!judgeCancellationRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to run judge evaluations');
+      }
+    } finally {
+      setIsRunningJudge(false);
+      setRunningJudgeConfigId(null);
+      setIsCancellingJudge(false);
+      judgeCancellationRef.current = false;
+      // Clear latestJudgeResult after a brief delay to allow last update to process
+      setTimeout(() => {
+        setLatestJudgeResult(null);
+      }, 100);
+    }
+  };
+
+  const handleCancelJudge = () => {
+    judgeCancellationRef.current = true;
+    setIsCancellingJudge(true);
+  };
+
+  const handleClearJudgeForRow = async (configId: number, rowId: number) => {
+    try {
+      await deleteJudgeResult(configId, rowId);
+      setJudgeResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear judge result');
+    }
+  };
+
+  const handleClearJudgeForAllRows = async (configId: number) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await deleteJudgeResultsForConfig(configId);
+      await loadJudgeResults(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear judge results');
+    }
+  };
+
   const currentColumns = csvData?.columns || [];
 
   return (
@@ -520,24 +778,43 @@ function App() {
           paddingRight: '0.5rem',
         }}>
           {selectedFileId ? (
-            <PromptEditor
-              prompt={currentPrompt}
-              groupedPrompts={groupedPrompts}
-              columns={currentColumns}
-              onSave={handleSavePrompt}
-              onVersionSelect={handleVersionSelect}
-              onDeletePrompt={handleDeletePrompt}
-              onContentChange={setCurrentPromptContent}
-              onAutoSave={handleAutoSave}
-              llmConfig={llmConfig}
-              onLLMConfigChange={setLlmConfig}
-              onRunAll={handleRunAll}
-              onCancel={handleCancel}
-              isRunning={isRunning}
-              isRunningAll={isRunningAll}
-              isCancelling={isCancelling}
-              error={error}
-            />
+            <>
+              <PromptEditor
+                prompt={currentPrompt}
+                groupedPrompts={groupedPrompts}
+                columns={currentColumns}
+                onSave={handleSavePrompt}
+                onVersionSelect={handleVersionSelect}
+                onDeletePrompt={handleDeletePrompt}
+                onContentChange={setCurrentPromptContent}
+                onAutoSave={handleAutoSave}
+                llmConfig={llmConfig}
+                onLLMConfigChange={setLlmConfig}
+                onRunAll={handleRunAll}
+                onClearAllOutputs={handleClearAllOutputs}
+                onCancel={handleCancel}
+                isRunning={isRunning}
+                isRunningAll={isRunningAll}
+                isCancelling={isCancelling}
+              />
+              
+              {/* Evaluations Panel */}
+              <JudgeEvaluationsPanel
+                csvFileId={selectedFileId}
+                judgeConfigs={judgeConfigs}
+                onConfigsChange={setJudgeConfigs}
+                columns={currentColumns}
+                onRunJudgeForAllRows={handleRunJudgeForAllRows}
+                onClearJudgeForAllRows={handleClearJudgeForAllRows}
+                onCreateJudgeConfig={handleCreateJudgeConfig}
+                onUpdateJudgeConfig={handleUpdateJudgeConfig}
+                onDeleteJudgeConfig={handleDeleteJudgeConfig}
+                isRunningJudge={isRunningJudge}
+                runningJudgeConfigId={runningJudgeConfigId}
+                onCancelJudge={handleCancelJudge}
+                isCancellingJudge={isCancellingJudge}
+              />
+            </>
           ) : (
             <>
               {/* Prompt Editor Placeholder */}
@@ -551,7 +828,7 @@ function App() {
                 gap: '1rem',
               }}>
                 <div>
-                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT TEMPLATE</h2>
+                  <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT</h2>
                   <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     SELECT A CSV FILE TO START CREATING PROMPTS
                   </p>
@@ -629,6 +906,14 @@ function App() {
                 isRunningAll={isRunningAll}
                 latestEvaluation={latestEvaluation}
                 clearAllOutputs={clearAllOutputs}
+                judgeConfigs={judgeConfigs}
+                judgeResults={judgeResults}
+                latestJudgeResult={latestJudgeResult}
+                onRunJudgeForRow={handleRunJudgeForRow}
+                onClearJudgeForRow={handleClearJudgeForRow}
+                isRunningJudge={isRunningJudge}
+                runningJudgeConfigId={runningJudgeConfigId}
+                runningJudgeCells={runningJudgeCells}
               />
             ) : (
               <div style={{ 

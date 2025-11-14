@@ -3,6 +3,19 @@ import re
 from typing import Dict, Any, Optional, List
 from litellm import acompletion
 
+# TODO: Replace these placeholders with your actual judge prompt prefix and suffix
+# The prefix should contain instructions for the LLM judge
+# The suffix should instruct the LLM to output the score in <score>NUMBER</score> format
+JUDGE_PROMPT_PREFIX = """You are an expert evaluator. Please evaluate the following and provide a score.
+
+"""
+JUDGE_PROMPT_SUFFIX = """
+
+Please provide your evaluation score in the following format:
+<score>NUMBER</score>
+Where NUMBER is a numeric score (e.g., 0.5, 1.0, 2.5, etc.)
+"""
+
 
 class LLMService:
     """Service for interacting with LLM providers via LiteLLM"""
@@ -88,6 +101,64 @@ class LLMService:
                 return choice.message.content
         
         return ""
+    
+    def build_judge_prompt(
+        self,
+        core_prompt: str,
+        row_data: Dict[str, Any],
+        available_columns: Optional[List[str]] = None
+    ) -> str:
+        """
+        Build a complete judge prompt by wrapping the core prompt with prefix and suffix,
+        then rendering any {{variable}} placeholders.
+        
+        Args:
+            core_prompt: The user-provided judge prompt (may contain {{variable}} syntax)
+            row_data: Dictionary of column names to values
+            available_columns: Optional list of available column names for validation
+        
+        Returns:
+            Complete judge prompt string with prefix, rendered core prompt, and suffix
+        
+        Raises:
+            ValueError: If a column name in the template doesn't exist in available_columns
+        """
+        # First render the core prompt to substitute {{variable}} placeholders
+        rendered_core = self.render_prompt(core_prompt, row_data, available_columns)
+        
+        # Combine prefix + rendered core + suffix
+        complete_prompt = JUDGE_PROMPT_PREFIX + rendered_core + JUDGE_PROMPT_SUFFIX
+        return complete_prompt
+    
+    def parse_judge_score(self, output: str) -> float:
+        """
+        Parse a numeric score from LLM output that should contain <score>NUMBER</score>.
+        
+        Args:
+            output: The raw LLM output text
+        
+        Returns:
+            The parsed score as a float
+        
+        Raises:
+            ValueError: If no valid score is found in the expected format
+        """
+        # Look for <score>NUMBER</score> pattern
+        pattern = r'<score>\s*([+-]?\d*\.?\d+)\s*</score>'
+        match = re.search(pattern, output, re.IGNORECASE)
+        
+        if match:
+            try:
+                score = float(match.group(1))
+                return score
+            except ValueError:
+                raise ValueError(f"Could not parse score value: {match.group(1)}")
+        
+        # If no match found, raise an error
+        raise ValueError(
+            f"No valid score found in LLM output. Expected format: <score>NUMBER</score>. "
+            f"Output received: {output[:200]}..." if len(output) > 200 else f"Output received: {output}"
+        )
 
 
 # Global instance

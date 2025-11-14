@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, startTransition } from 'react';
-import { CSVDataWithRows, getEvaluationsForCSV, Evaluation, Prompt, updateEvaluation, getEvaluationForRow } from '../services/api';
+import { useState, useEffect, useRef, startTransition, useMemo } from 'react';
+import { CSVDataWithRows, getEvaluationsForCSV, Evaluation, Prompt, updateEvaluation, getEvaluationForRow, JudgeConfig, JudgeResult } from '../services/api';
 import { LLMConfig } from './PromptEditor';
 
 interface DataTableProps {
@@ -13,6 +13,14 @@ interface DataTableProps {
   isRunningAll?: boolean;
   latestEvaluation?: Evaluation | null;
   clearAllOutputs?: boolean;
+  judgeConfigs?: JudgeConfig[];
+  judgeResults?: JudgeResult[];
+  latestJudgeResult?: JudgeResult | null;
+  onRunJudgeForRow?: (configId: number, rowId: number) => void;
+  onClearJudgeForRow?: (configId: number, rowId: number) => void;
+  isRunningJudge?: boolean;
+  runningJudgeConfigId?: number | null;
+  runningJudgeCells?: Set<string>;
 }
 
 const EVAL_COLUMNS = ["Output", "Annotation", "Feedback"];
@@ -28,6 +36,14 @@ export default function DataTable({
   isRunningAll = false,
   latestEvaluation,
   clearAllOutputs = false,
+  judgeConfigs = [],
+  judgeResults = [],
+  latestJudgeResult = null,
+  onRunJudgeForRow,
+  onClearJudgeForRow,
+  isRunningJudge = false,
+  runningJudgeConfigId = null,
+  runningJudgeCells = new Set(),
 }: DataTableProps) {
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [openMenuColumn, setOpenMenuColumn] = useState<string | null>(null);
@@ -49,6 +65,27 @@ export default function DataTable({
   const tableRef = useRef<HTMLTableElement | null>(null);
   const processedEvaluationIds = useRef<Set<number>>(new Set());
 
+  // Build map of scores by row and config for O(1) lookup
+  const scoresByRowAndConfig = useMemo(() => {
+    const map: { [rowId: number]: { [configId: number]: number } } = {};
+    judgeResults.forEach(result => {
+      if (!map[result.csv_row_id]) {
+        map[result.csv_row_id] = {};
+      }
+      map[result.csv_row_id][result.config_id] = result.score;
+    });
+    return map;
+  }, [judgeResults]);
+
+  // Build map of configs by name for quick lookup
+  const configByName = useMemo(() => {
+    const map: { [name: string]: JudgeConfig } = {};
+    judgeConfigs.forEach(config => {
+      map[config.name] = config;
+    });
+    return map;
+  }, [judgeConfigs]);
+
   // Calculate and set column widths to fit container
   const calculateColumnWidths = () => {
     if (!data?.columns || !tableRef.current) return;
@@ -59,16 +96,30 @@ export default function DataTable({
     const containerWidth = container.clientWidth;
     if (containerWidth === 0) return; // Container not ready yet
     
-    const allColumns = [...data.columns, ...EVAL_COLUMNS];
+    // Sort judge columns by creation date (oldest first) so newest appear on the right
+    const judgeColumnNames = [...judgeConfigs]
+      .sort((a, b) => {
+        if (a.created_at && b.created_at) {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateA - dateB; // Oldest first, so newest appears on right
+        }
+        return 0;
+      })
+      .map(c => c.name);
+    const allColumns = [...data.columns, ...EVAL_COLUMNS, ...judgeColumnNames];
     const evalColumnCount = EVAL_COLUMNS.length;
+    const judgeColumnCount = judgeColumnNames.length;
     const regularColumnCount = data.columns.length;
     
     // Reserve space for evaluation columns (wider)
-    const evalColumnWidth = Math.max(200, containerWidth * 0.15);
+    const evalColumnWidth = Math.max(175, containerWidth * 0.15);
+    const judgeColumnWidth = Math.max(180, containerWidth * 0.12); // Judge columns need space for score + buttons
     const reservedForEval = evalColumnWidth * evalColumnCount;
+    const reservedForJudge = judgeColumnWidth * judgeColumnCount;
     
     // Distribute remaining space among regular columns
-    const remainingWidth = Math.max(0, containerWidth - reservedForEval);
+    const remainingWidth = Math.max(0, containerWidth - reservedForEval - reservedForJudge);
     const regularColumnWidth = regularColumnCount > 0 
       ? Math.max(100, remainingWidth / regularColumnCount)
       : 150;
@@ -82,6 +133,8 @@ export default function DataTable({
           updated = true;
           if (EVAL_COLUMNS.includes(column)) {
             newWidths[column] = Math.floor(evalColumnWidth);
+          } else if (judgeColumnNames.includes(column)) {
+            newWidths[column] = Math.floor(judgeColumnWidth);
           } else {
             newWidths[column] = Math.floor(regularColumnWidth);
           }
@@ -94,8 +147,19 @@ export default function DataTable({
 
   // Initialize column widths when data changes
   useEffect(() => {
-    if (data?.columns) {
-      const allColumns = [...data.columns, ...EVAL_COLUMNS];
+      if (data?.columns) {
+        // Sort judge columns by creation date (oldest first) so newest appear on the right
+        const judgeColumnNames = [...judgeConfigs]
+          .sort((a, b) => {
+            if (a.created_at && b.created_at) {
+              const dateA = new Date(a.created_at).getTime();
+              const dateB = new Date(b.created_at).getTime();
+              return dateA - dateB; // Oldest first, so newest appears on right
+            }
+            return 0;
+          })
+          .map(c => c.name);
+        const allColumns = [...data.columns, ...EVAL_COLUMNS, ...judgeColumnNames];
       setColumnWidths(prev => {
         const updated: { [key: string]: number } = { ...prev };
         let hasNewColumns = false;
@@ -112,23 +176,25 @@ export default function DataTable({
             });
           });
           
-          // Set temporary defaults while we calculate
-          allColumns.forEach(column => {
-            if (!updated[column]) {
-              if (EVAL_COLUMNS.includes(column)) {
-                updated[column] = 200;
-              } else {
-                updated[column] = 150;
-              }
-            }
-          });
+              // Set temporary defaults while we calculate
+              allColumns.forEach(column => {
+                if (!updated[column]) {
+                  if (EVAL_COLUMNS.includes(column)) {
+                    updated[column] = 200;
+                  } else if (judgeColumnNames.includes(column)) {
+                    updated[column] = 180;
+                  } else {
+                    updated[column] = 150;
+                  }
+                }
+              });
         }
         
         // Only update if there are new columns to avoid resetting user resizes
         return hasNewColumns ? updated : prev;
       });
     }
-  }, [data?.columns]);
+  }, [data?.columns, judgeConfigs]);
 
   // Handle window resize to recalculate widths
   useEffect(() => {
@@ -284,6 +350,19 @@ export default function DataTable({
     });
   }, [latestEvaluation]);
 
+  // Handle single judge result updates (for incremental updates during "Run All")
+  // This effect ensures the component re-renders when each result comes in,
+  // causing scoresByRowAndConfig to recalculate with the updated judgeResults prop
+  useEffect(() => {
+    if (!latestJudgeResult) {
+      return;
+    }
+    
+    // The scoresByRowAndConfig useMemo will automatically update when judgeResults prop changes
+    // This effect ensures the UI updates incrementally as each result comes in
+    // by triggering a re-render when latestJudgeResult changes
+  }, [latestJudgeResult]);
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -377,14 +456,26 @@ export default function DataTable({
     );
   }
 
-  // Combine CSV columns with evaluation columns
-  const allColumns = [...data.columns, ...EVAL_COLUMNS];
+      // Combine CSV columns with evaluation columns and judge columns
+      // Sort judge columns by creation date (newest first) so newest appear on the right
+      const judgeColumnNames = [...judgeConfigs]
+        .sort((a, b) => {
+          if (a.created_at && b.created_at) {
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return dateA - dateB; // Oldest first, so newest appears on right
+          }
+          return 0;
+        })
+        .map(c => c.name);
+      const allColumns = [...data.columns, ...EVAL_COLUMNS, ...judgeColumnNames];
 
   const handleRowClick = (rowId: number, e: React.MouseEvent) => {
     // Don't expand row if clicking on interactive elements
     const target = e.target as HTMLElement;
     if (target.closest('.column-menu, .annotation-buttons, .feedback-input') || 
-        target.closest('[data-feedback-cell]')) {
+        target.closest('[data-feedback-cell]') ||
+        target.closest('button')) {
       return;
     }
     setExpandedRowId(expandedRowId === rowId ? null : rowId);
@@ -684,7 +775,8 @@ export default function DataTable({
     e.stopPropagation();
     resizeColumnRef.current = column;
     resizeStartXRef.current = e.clientX;
-    resizeStartWidthRef.current = columnWidths[column] || (EVAL_COLUMNS.includes(column) ? 200 : 120);
+    const isJudgeColumn = judgeConfigs.some(c => c.name === column);
+    resizeStartWidthRef.current = columnWidths[column] || (EVAL_COLUMNS.includes(column) ? 200 : isJudgeColumn ? 180 : 120);
     setResizingColumn(column);
   };
 
@@ -693,7 +785,7 @@ export default function DataTable({
       if (!resizeColumnRef.current) return;
       
       const deltaX = e.clientX - resizeStartXRef.current;
-      const newWidth = Math.max(80, resizeStartWidthRef.current + deltaX); // Minimum width 80px
+      const newWidth = Math.max(175, resizeStartWidthRef.current + deltaX); // Minimum width 200px
       
       setColumnWidths(prev => ({
                 ...prev,
@@ -790,6 +882,17 @@ export default function DataTable({
         feedback: null,
         output: "",
       };
+      
+      // Clear all judge evaluation scores for this row
+      if (onClearJudgeForRow && judgeConfigs.length > 0) {
+        await Promise.allSettled(
+          judgeConfigs.map(config => 
+            Promise.resolve(onClearJudgeForRow(config.id, rowId)).catch((err: any) => {
+              console.error(`Error clearing judge result for config ${config.id}:`, err);
+            })
+          )
+        );
+      }
       
       // Update state from DB response using startTransition to prevent flickering
       startTransition(() => {
@@ -1097,6 +1200,124 @@ export default function DataTable({
       );
     }
     
+    // Check if this is a judge column
+    const judgeConfig = configByName[column];
+    if (judgeConfig) {
+      const score = scoresByRowAndConfig[rowId]?.[judgeConfig.id];
+      const cellKey = `${judgeConfig.id}-${rowId}`;
+      const isCellRunning = runningJudgeCells.has(cellKey);
+      const isConfigRunning = isRunningJudge && runningJudgeConfigId === judgeConfig.id;
+      const hasScore = score !== undefined && score !== null;
+      
+      // Check if there's output for this row (needed to run judge evaluation)
+      const evalOutput = evaluations[rowId]?.output;
+      const localOutput = localRowData[rowId]?.output;
+      const output = evalOutput !== undefined ? evalOutput : (localOutput !== undefined ? localOutput : "");
+      const hasOutput = output !== null && output !== undefined && output !== "";
+      const isRunDisabled = isCellRunning || isConfigRunning || !hasOutput;
+      
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0 }}>
+          <span style={{ 
+            color: hasScore ? 'var(--text-primary)' : 'var(--text-tertiary)',
+            fontStyle: hasScore ? 'normal' : 'italic',
+            flex: 1,
+            textAlign: 'right',
+            fontFamily: 'monospace',
+            fontSize: '0.8125rem',
+            fontWeight: '600',
+            marginRight: 'auto',
+          }}>
+            {isCellRunning || isConfigRunning ? "..." : (hasScore ? score.toFixed(2) : "—")}
+          </span>
+          <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
+            {hasScore && onClearJudgeForRow && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onClearJudgeForRow) {
+                    onClearJudgeForRow(judgeConfig.id, rowId);
+                  }
+                }}
+                disabled={isCellRunning || isConfigRunning}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  backgroundColor: (isCellRunning || isConfigRunning) ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                  color: (isCellRunning || isConfigRunning) ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: '0',
+                  cursor: (isCellRunning || isConfigRunning) ? 'not-allowed' : 'pointer',
+                  fontSize: '0.6875rem',
+                  fontWeight: '700',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'none',
+                  textTransform: 'uppercase',
+                  opacity: (isCellRunning || isConfigRunning) ? 0.4 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isCellRunning && !isConfigRunning) {
+                    e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                    e.currentTarget.style.outlineOffset = '-2px';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isCellRunning && !isConfigRunning) {
+                    e.currentTarget.style.outline = 'none';
+                  }
+                }}
+                title="Clear score for this row"
+              >
+                CLEAR
+              </button>
+            )}
+            {onRunJudgeForRow && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onRunJudgeForRow && hasOutput) {
+                    onRunJudgeForRow(judgeConfig.id, rowId);
+                  }
+                }}
+                disabled={isRunDisabled}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  backgroundColor: isRunDisabled ? 'var(--bg-tertiary)' : 'var(--accent-success)',
+                  color: isRunDisabled ? 'var(--text-tertiary)' : '#000000',
+                  border: 'none',
+                  borderRadius: '0',
+                  cursor: isRunDisabled ? 'not-allowed' : 'pointer',
+                  fontSize: '0.6875rem',
+                  fontWeight: '700',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'none',
+                  textTransform: 'uppercase',
+                  opacity: isRunDisabled ? 0.4 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isRunDisabled) {
+                    e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                    e.currentTarget.style.outlineOffset = '-2px';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isRunDisabled) {
+                    e.currentTarget.style.outline = 'none';
+                  }
+                }}
+                title={hasOutput ? "Run judge evaluation for this row" : "No output available - run prompt first"}
+              >
+                {(isCellRunning || isConfigRunning) ? 'RUNNING...' : 'RUN'}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
     return String(row.row_data[column] || '');
   };
 
@@ -1159,7 +1380,9 @@ export default function DataTable({
               </th>
               {allColumns.map((column) => {
                 const isEvalColumn = EVAL_COLUMNS.includes(column);
-                const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : 120);
+                const isJudgeColumn = judgeColumnNames.includes(column);
+                const isSpecialColumn = isEvalColumn || isJudgeColumn;
+                const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : isJudgeColumn ? 180 : 120);
                 return (
                   <th
                     key={column}
@@ -1172,7 +1395,7 @@ export default function DataTable({
                       position: 'relative',
                       whiteSpace: 'nowrap',
                       width: `${columnWidth}px`,
-                      minWidth: `${columnWidth}px`,
+                      minWidth: `${Math.max(175, columnWidth)}px`,
                       maxWidth: `${columnWidth}px`,
                       zIndex: 1,
                       verticalAlign: 'middle',
@@ -1189,7 +1412,7 @@ export default function DataTable({
                       alignItems: 'center',
                       position: 'relative',
                       width: '100%',
-                      paddingRight: !isEvalColumn ? '1.5rem' : '0',
+                      paddingRight: !isSpecialColumn ? '1.5rem' : '0',
                     }}>
                       {renamingColumn === column ? (
                         <input
@@ -1223,11 +1446,11 @@ export default function DataTable({
                             whiteSpace: 'nowrap',
                             flex: 1,
                             textAlign: 'center',
-                            paddingRight: !isEvalColumn ? '0.5rem' : '0',
+                            paddingRight: !isSpecialColumn ? '0.5rem' : '0',
                           }}>
                             {column}
                           </span>
-                          {!isEvalColumn && (
+                          {!isSpecialColumn && (
                             <div 
                               className="column-menu"
                               ref={(el) => { menuRefs.current[column] = el; }}
@@ -1432,10 +1655,11 @@ export default function DataTable({
                   </td>
                   {allColumns.map((column) => {
                     const isEvalColumn = EVAL_COLUMNS.includes(column);
+                    const isJudgeColumn = judgeColumnNames.includes(column);
                     const isFeedbackColumn = column === "Feedback";
                     const isOutputColumn = column === "Output";
                     const isAnnotationColumn = column === "Annotation";
-                    const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : 120);
+                    const columnWidth = columnWidths[column] || (isEvalColumn ? 200 : isJudgeColumn ? 180 : 120);
                     return (
                       <td
                         key={column}
@@ -1443,12 +1667,12 @@ export default function DataTable({
                           padding: isExpanded ? '0.75rem 0.5rem' : '0.5rem 0.5rem',
                           overflow: isExpanded || isFeedbackColumn ? 'visible' : 'hidden',
                           textOverflow: isExpanded || isFeedbackColumn ? 'clip' : 'ellipsis',
-                          whiteSpace: (isExpanded && !isEvalColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
+                          whiteSpace: (isExpanded && !isEvalColumn && !isJudgeColumn) || isFeedbackColumn ? 'pre-wrap' : 'nowrap',
                           wordBreak: (isExpanded || isFeedbackColumn) ? 'break-word' : 'normal',
-                          verticalAlign: (isOutputColumn || isAnnotationColumn) ? 'middle' : 'top',
+                          verticalAlign: (isOutputColumn || isAnnotationColumn || isJudgeColumn) ? 'middle' : 'top',
                           width: `${columnWidth}px`,
-                          minWidth: `${columnWidth}px`,
-                          maxWidth: `${columnWidth}px`,
+                          minWidth: `${Math.max(175, columnWidth)}px`,
+                          maxWidth: isExpanded && isJudgeColumn ? 'none' : `${columnWidth}px`,
                           color: 'var(--text-primary)',
                           fontSize: '0.8125rem',
                           fontFamily: 'monospace',

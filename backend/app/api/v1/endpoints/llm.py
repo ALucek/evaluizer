@@ -74,24 +74,46 @@ async def run_prompt(
         db.commit()
         db.refresh(evaluation)
     
-    # Get completion from LLM
-    try:
-        output = await llm_service.completion(
-            rendered_prompt,
-            model=request.model,
-            temperature=request.temperature,
-            max_completion_tokens=request.max_tokens,
-        )
-        
-        # Save the output to the database
-        evaluation.output = output if output else ""
-        db.commit()
-        db.refresh(evaluation)
-        
-        return evaluation
-        
-    except Exception as e:
-        # Rollback on error
+    # Get completion from LLM with retries
+    output = None
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            output = await llm_service.completion(
+                rendered_prompt,
+                model=request.model,
+                temperature=request.temperature,
+                max_completion_tokens=request.max_tokens,
+            )
+            
+            # Success - break out of retry loop
+            break
+            
+        except Exception as e:
+            # LLM call failed - retry if we have attempts left
+            if attempt < max_retries - 1:
+                continue
+            else:
+                # Rollback on final failure
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error calling LLM after {max_retries} attempts: {str(e)}"
+                )
+    
+    # Ensure we have valid output
+    if output is None:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error calling LLM: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get valid LLM output after {max_retries} attempts"
+        )
+    
+    # Save the output to the database
+    evaluation.output = output if output else ""
+    db.commit()
+    db.refresh(evaluation)
+    
+    return evaluation
 
