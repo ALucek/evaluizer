@@ -422,7 +422,11 @@ async def run_gepa(
     )
     
     # Get best prompt
-    best_prompt = result.best_candidate["system_prompt"]
+    best_prompt = result.best_candidate.get("system_prompt", "")
+    
+    # Validate that we got a prompt
+    if not best_prompt or not best_prompt.strip():
+        raise ValueError("GEPA optimization did not produce a valid prompt")
     
     # Calculate best score from validation set
     val_batch = adapter.evaluate(valset, result.best_candidate, capture_traces=False)
@@ -430,11 +434,17 @@ async def run_gepa(
     
     # Create new prompt version (base_prompt_id is always required now)
     root_prompt_id = get_root_prompt_id(db, gepa_config.base_prompt_id)
+    
+    # Get the root prompt to inherit its name
+    root_prompt = db.query(Prompt).filter(Prompt.id == root_prompt_id).first()
+    if not root_prompt:
+        raise ValueError(f"Root prompt {root_prompt_id} not found")
+    
     version = get_next_prompt_version(db, root_prompt_id)
     
     new_prompt = Prompt(
-        name=None,  # Will inherit from parent
-        content=best_prompt,
+        name=root_prompt.name,  # Inherit name from root prompt
+        content=best_prompt.strip(),  # Ensure content is trimmed
         csv_file_id=csv_file_id,
         parent_prompt_id=root_prompt_id,
         version=version,
