@@ -39,17 +39,11 @@ class MyEvaluation(EvaluationPlugin):
 register_plugin(MyEvaluation)
 ```
 
-3. Import your plugin in `src/evaluations/plugins/__init__.py`:
-
-```python
-from . import my_evaluation  # noqa: F401
-```
-
-4. The plugin will be automatically discovered and available via the registry.
+3. That's it! The plugin will be automatically discovered and available via the registry. No need to edit any `__init__.py` files.
 
 ## Example Plugin
 
-See `src/evaluations/plugins/example_basic.py` for a complete example that scores outputs based on length.
+See `src/evaluations/plugins/output_length.py` for a complete example that scores outputs based on length.
 
 ## Usage
 
