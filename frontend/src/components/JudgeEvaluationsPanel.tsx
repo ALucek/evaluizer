@@ -48,6 +48,8 @@ export default function JudgeEvaluationsPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isSaving, setIsSaving] = useState(false);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const previousConfigIdRef = useRef<number | null>(null);
+  const previousShowNewFormRef = useRef<boolean>(false);
 
   // Get unique judge names (grouped by name)
   const judgeNames = Array.from(new Set(judgeConfigs.map(c => c.name))).sort();
@@ -56,29 +58,43 @@ export default function JudgeEvaluationsPanel({
   // Set selected judge name based on available configs - but don't auto-select
   // User should explicitly select or create new
 
-  // Load selected config when selection changes
+  // Load selected config when selection changes (only when config ID changes, not when object reference changes)
   useEffect(() => {
-    if (selectedJudgeConfig && !showNewForm) {
-      setJudgePrompt(selectedJudgeConfig.prompt);
-      setJudgeName(selectedJudgeConfig.name);
-      setLocalLLMConfig({
-        model: selectedJudgeConfig.model,
-        temperature: selectedJudgeConfig.temperature,
-        maxTokens: selectedJudgeConfig.max_tokens,
-        concurrency: 10,
-      });
-    } else if (showNewForm) {
-      // Default prompt to reference Output
-      setJudgePrompt('{{Output}}');
-      setJudgeName('');
-      setLocalLLMConfig({
-        model: 'gpt-5',
-        temperature: 0.0,
-        maxTokens: 500,
-        concurrency: 10,
-      });
+    const currentConfigId = selectedJudgeConfig?.id ?? null;
+    const previousConfigId = previousConfigIdRef.current;
+    const previousShowNewForm = previousShowNewFormRef.current;
+    
+    // Reset if:
+    // 1. Config ID changed (user selected a different config)
+    // 2. Switching to/from new form mode
+    const configIdChanged = currentConfigId !== previousConfigId;
+    const showNewFormChanged = showNewForm !== previousShowNewForm;
+    
+    if (configIdChanged || showNewFormChanged) {
+      if (selectedJudgeConfig && !showNewForm) {
+        setJudgePrompt(selectedJudgeConfig.prompt);
+        setJudgeName(selectedJudgeConfig.name);
+        setLocalLLMConfig({
+          model: selectedJudgeConfig.model,
+          temperature: selectedJudgeConfig.temperature,
+          maxTokens: selectedJudgeConfig.max_tokens,
+          concurrency: 10,
+        });
+      } else if (showNewForm) {
+        // Start with empty prompt - Output is automatically included
+        setJudgePrompt('');
+        setJudgeName('');
+        setLocalLLMConfig({
+          model: 'gpt-5',
+          temperature: 0.0,
+          maxTokens: 500,
+          concurrency: 10,
+        });
+      }
+      previousConfigIdRef.current = currentConfigId;
+      previousShowNewFormRef.current = showNewForm;
     }
-  }, [selectedJudgeConfig, showNewForm]);
+  }, [selectedJudgeConfig?.id, showNewForm]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -236,7 +252,7 @@ export default function JudgeEvaluationsPanel({
         await onCreateJudgeConfig(judgeName.trim(), judgePrompt.trim(), localLLMConfig);
         setShowNewForm(false);
         setJudgeName('');
-        setJudgePrompt('{{Output}}');
+        setJudgePrompt('');
         setIsLLMConfigExpanded(false);
         // Don't auto-select - let user choose to edit it or add another
       }
@@ -277,10 +293,10 @@ export default function JudgeEvaluationsPanel({
     }}>
       <div>
         <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          LLM AS A JUDGE EVALUATIONS
+          LLM-AS-A-JUDGE EVALUATIONS
         </h2>
         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-          USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO INSERT COLUMN VALUES. THE JUDGE PROMPT WILL BE WRAPPED WITH A PREFIX AND SUFFIX, AND THE SYSTEM WILL PARSE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'<score>NUMBER</score>'}</code> FROM THE LLM OUTPUT.
+          ENTER YOUR EVALUATION CRITERIA BELOW. THE OUTPUT COLUMN IS AUTOMATICALLY INCLUDED FOR EVALUATION. USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO REFERENCE OTHER COLUMNS FOR CONTEXT.
         </p>
       </div>
 
@@ -476,6 +492,9 @@ export default function JudgeEvaluationsPanel({
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
+                            if (isRunningJudge && runningJudgeConfigId === config.id) {
+                              return;
+                            }
                             if (window.confirm(`Are you sure you want to delete the evaluation "${config.name}" and all its scores? This action cannot be undone.`)) {
                               if (onDeleteJudgeConfig) {
                                 await onDeleteJudgeConfig(config.id);
@@ -486,13 +505,14 @@ export default function JudgeEvaluationsPanel({
                               }
                             }
                           }}
+                          disabled={isRunningJudge && runningJudgeConfigId === config.id}
                           style={{
                             padding: '0.25rem 0.5rem',
                             backgroundColor: 'transparent',
-                            color: 'var(--accent-danger)',
-                            border: '1px solid var(--accent-danger)',
+                            color: (isRunningJudge && runningJudgeConfigId === config.id) ? 'var(--text-tertiary)' : 'var(--accent-danger)',
+                            border: `1px solid ${(isRunningJudge && runningJudgeConfigId === config.id) ? 'var(--border-primary)' : 'var(--accent-danger)'}`,
                             borderRadius: '0',
-                            cursor: 'pointer',
+                            cursor: (isRunningJudge && runningJudgeConfigId === config.id) ? 'not-allowed' : 'pointer',
                             fontSize: '0.6875rem',
                             fontWeight: '700',
                             fontFamily: 'monospace',
@@ -500,15 +520,18 @@ export default function JudgeEvaluationsPanel({
                             transition: 'none',
                             textTransform: 'uppercase',
                             width: '100%',
+                            opacity: (isRunningJudge && runningJudgeConfigId === config.id) ? 0.4 : 1,
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.outline = '2px solid var(--accent-danger)';
-                            e.currentTarget.style.outlineOffset = '-2px';
+                            if (!(isRunningJudge && runningJudgeConfigId === config.id)) {
+                              e.currentTarget.style.outline = '2px solid var(--accent-danger)';
+                              e.currentTarget.style.outlineOffset = '-2px';
+                            }
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.outline = 'none';
                           }}
-                          title="Delete this evaluation and all its scores"
+                          title={(isRunningJudge && runningJudgeConfigId === config.id) ? "Cannot delete evaluation while it's running" : "Delete this evaluation and all its scores"}
                         >
                           DELETE
                         </button>
@@ -524,7 +547,7 @@ export default function JudgeEvaluationsPanel({
                 onClick={() => {
                   setShowNewForm(true);
                   setJudgeName('');
-                  setJudgePrompt('{{Output}}');
+                  setJudgePrompt('');
                   setIsLLMConfigExpanded(false);
                 }}
                 disabled={!csvFileId}
@@ -645,25 +668,25 @@ export default function JudgeEvaluationsPanel({
               onClick={() => insertVariable('Output')}
               style={{
                 padding: '0.25rem 0.5rem',
-                backgroundColor: 'var(--accent-primary)',
-                border: '1px solid var(--accent-primary)',
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-primary)',
                 borderRadius: '0',
                 cursor: 'pointer',
                 fontSize: '0.75rem',
-                color: 'white',
+                color: 'var(--text-primary)',
                 fontWeight: '700',
                 fontFamily: 'monospace',
                 transition: 'none',
                 textTransform: 'uppercase',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                e.currentTarget.style.outline = '2px solid var(--accent-primary)';
                 e.currentTarget.style.outlineOffset = '-2px';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.outline = 'none';
               }}
-              title="Insert Output column (from evaluation results)"
+              title="Insert Output column reference (optional - Output is automatically included)"
             >
               Output
             </button>
@@ -677,7 +700,7 @@ export default function JudgeEvaluationsPanel({
           ref={textareaRef}
           value={judgePrompt}
           onChange={handleChange}
-          placeholder="ENTER YOUR JUDGE PROMPT HERE...&#10;EXAMPLE: EVALUATE THE QUALITY OF: {{Output}}"
+          placeholder="ENTER YOUR EVALUATION CRITERIA...&#10;EXAMPLE: Score 0-5 based on accuracy and clarity.&#10;Reference other columns with {{column_name}} if needed."
           style={{
             width: '100%',
             minHeight: '200px',

@@ -233,9 +233,11 @@ async def run_judge(
             if attempt < max_retries - 1:
                 continue
             else:
+                # Include the actual raw_output in the error message for debugging
+                output_preview = raw_output[:500] if raw_output else "(empty or None)"
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to parse score from LLM output after {max_retries} attempts: {str(e)}"
+                    detail=f"Failed to parse score from LLM output after {max_retries} attempts: {str(e)}\n\nOutput received:\n{output_preview}"
                 )
         except Exception as e:
             # LLM call failed - retry if we have attempts left

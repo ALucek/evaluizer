@@ -753,8 +753,40 @@ function App() {
           borderBottom: '1px solid var(--border-primary)',
           borderTop: '1px solid var(--accent-danger)',
           fontFamily: 'monospace',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
         }}>
-          {error}
+          <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              padding: '0.25rem 0.5rem',
+              backgroundColor: 'transparent',
+              color: 'var(--accent-danger)',
+              border: '1px solid var(--accent-danger)',
+              borderRadius: '0',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              fontFamily: 'monospace',
+              transition: 'none',
+              textTransform: 'uppercase',
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--accent-danger)';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--accent-danger)';
+            }}
+            title="Dismiss error"
+          >
+            ×
+          </button>
         </div>
       )}
 

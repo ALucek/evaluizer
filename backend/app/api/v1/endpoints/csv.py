@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.csv_data import CSVFile, CSVRow
 from app.models.evaluation import Evaluation
 from app.models.prompt import Prompt
+from app.models.judge import JudgeConfig, JudgeResult
 from app.utils import parse_json_safe, get_or_404
 from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
@@ -264,7 +265,7 @@ async def export_csv_with_evaluations(
     prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> StreamingResponse:
-    """Export CSV file with all evaluation data (output, annotation, feedback) and prompt as a ZIP file"""
+    """Export CSV file with all evaluation data (output, annotation, feedback) and judge scores, plus prompt as a ZIP file"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     # Get all rows
@@ -273,6 +274,23 @@ async def export_csv_with_evaluations(
     # Get all evaluations for this CSV file
     evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
     eval_map = {eval.csv_row_id: eval for eval in evaluations}
+    
+    # Get all judge configs for this CSV file (sorted by creation date, oldest first)
+    judge_configs = db.query(JudgeConfig).filter(
+        JudgeConfig.csv_file_id == csv_id
+    ).order_by(JudgeConfig.created_at).all()
+    
+    # Get all judge results for this CSV file
+    judge_results = db.query(JudgeResult).filter(
+        JudgeResult.csv_file_id == csv_id
+    ).all()
+    
+    # Build map of scores by row_id and config_id for quick lookup
+    scores_by_row_and_config: dict[int, dict[int, float]] = {}
+    for result in judge_results:
+        if result.csv_row_id not in scores_by_row_and_config:
+            scores_by_row_and_config[result.csv_row_id] = {}
+        scores_by_row_and_config[result.csv_row_id][result.config_id] = result.score
     
     # Get prompt - use provided prompt_id if available, otherwise get first prompt for CSV file
     if prompt_id:
@@ -285,13 +303,16 @@ async def export_csv_with_evaluations(
     # Get original columns
     original_columns = parse_json_safe(csv_file.columns, [])
     
-    # Create CSV with original columns + evaluation columns
+    # Build fieldnames: original columns + evaluation columns + judge columns
+    judge_column_names = [config.name for config in judge_configs]
+    fieldnames = original_columns + ["Output", "Annotation", "Feedback"] + judge_column_names
+    
+    # Create CSV with original columns + evaluation columns + judge columns
     csv_output = io.StringIO()
-    fieldnames = original_columns + ["Output", "Annotation", "Feedback"]
     writer = csv.DictWriter(csv_output, fieldnames=fieldnames)
     writer.writeheader()
     
-    # Write each row with its evaluation data
+    # Write each row with its evaluation data and judge scores
     for row in rows:
         row_dict = parse_json_safe(row.row_data, {})
         evaluation = eval_map.get(row.id)
@@ -303,6 +324,12 @@ async def export_csv_with_evaluations(
             else ""
         )
         row_dict["Feedback"] = evaluation.feedback if evaluation and evaluation.feedback else ""
+        
+        # Add judge scores for each judge config
+        row_scores = scores_by_row_and_config.get(row.id, {})
+        for config in judge_configs:
+            score = row_scores.get(config.id)
+            row_dict[config.name] = f"{score:.2f}" if score is not None else ""
         
         writer.writerow(row_dict)
     
