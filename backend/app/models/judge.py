@@ -16,8 +16,8 @@ class JudgeConfig(Base):
     model = Column(String, nullable=False)  # LiteLLM model ID
     temperature = Column(Float, nullable=False, default=1.0)
     max_tokens = Column(Integer, nullable=False, default=2000)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Unique constraint: name must be unique per CSV file
     __table_args__ = (
@@ -38,8 +38,8 @@ class JudgeResult(Base):
     csv_row_id = Column(Integer, ForeignKey("csv_rows.id", ondelete="CASCADE"), nullable=False)
     score = Column(Float, nullable=False)  # Parsed score from <score>...</score>
     raw_output = Column(Text, nullable=True)  # Full LLM output text
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Unique constraint: one result per config per row
     __table_args__ = (

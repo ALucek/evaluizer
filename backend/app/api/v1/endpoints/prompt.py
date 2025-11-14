@@ -27,6 +27,9 @@ async def create_prompt(
     if request.csv_file_id:
         get_or_404(db, CSVFile, request.csv_file_id, "CSV file not found")
     
+    if not request.system_prompt or not request.system_prompt.strip():
+        raise HTTPException(status_code=400, detail="system_prompt is required")
+    
     # If parent_prompt_id is provided, create a new version
     if request.parent_prompt_id:
         parent_prompt = get_or_404(db, Prompt, request.parent_prompt_id, "Parent prompt not found")
@@ -37,7 +40,8 @@ async def create_prompt(
         
         prompt = Prompt(
             name=request.name or parent_prompt.name,
-            content=request.content,
+            system_prompt=request.system_prompt,
+            user_message_column=request.user_message_column,
             csv_file_id=request.csv_file_id or parent_prompt.csv_file_id,
             parent_prompt_id=root_prompt_id,
             version=version,
@@ -47,7 +51,8 @@ async def create_prompt(
         # Create a new root prompt (version 1)
         prompt = Prompt(
             name=request.name,
-            content=request.content,
+            system_prompt=request.system_prompt,
+            user_message_column=request.user_message_column,
             csv_file_id=request.csv_file_id,
             version=1,
             commit_message=request.commit_message
@@ -112,8 +117,11 @@ async def update_prompt(
     if request.name is not None:
         prompt.name = request.name
     
-    if request.content is not None:
-        prompt.content = request.content
+    if request.system_prompt is not None:
+        prompt.system_prompt = request.system_prompt
+    
+    if request.user_message_column is not None:
+        prompt.user_message_column = request.user_message_column
     
     if request.commit_message is not None:
         prompt.commit_message = request.commit_message
@@ -185,9 +193,13 @@ async def create_prompt_version(
     root_prompt_id = get_root_prompt_id(db, prompt_id)
     version = get_next_prompt_version(db, root_prompt_id)
     
+    if not request.system_prompt:
+        raise HTTPException(status_code=400, detail="system_prompt is required")
+    
     prompt = Prompt(
         name=request.name or parent_prompt.name,
-        content=request.content,
+        system_prompt=request.system_prompt,
+        user_message_column=request.user_message_column if request.user_message_column is not None else parent_prompt.user_message_column,
         csv_file_id=parent_prompt.csv_file_id,
         parent_prompt_id=root_prompt_id,
         version=version,

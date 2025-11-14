@@ -105,7 +105,7 @@ class LLMService:
         max_completion_tokens: Optional[int] = None,
     ) -> str:
         """
-        Get a completion from the LLM via LiteLLM.
+        Get a completion from the LLM via LiteLLM (legacy method for backward compatibility).
         
         Args:
             prompt: The prompt to send to the LLM
@@ -133,6 +133,63 @@ class LLMService:
             choice = response.choices[0]
             if choice.message and choice.message.content:
                 return choice.message.content
+        
+        return ""
+    
+    async def chat_completion(
+        self,
+        system_prompt: str,
+        user_message: str,
+        model: str,
+        temperature: Optional[float] = None,
+        max_completion_tokens: Optional[int] = None,
+    ) -> str:
+        """
+        Get a completion from the LLM using chat format with system and user messages.
+        
+        Args:
+            system_prompt: The system prompt (can include {{variable}} syntax that will be rendered)
+            user_message: The user message content
+            model: Any LiteLLM-supported model ID (e.g., 'gpt-4', 'azure/gpt-4', 'gemini/gemini-pro')
+            temperature: Temperature setting (defaults to 1.0)
+            max_completion_tokens: Maximum tokens to generate (defaults to 2000)
+        
+        Returns:
+            The complete response text from the LLM
+        """
+        # Use defaults if not provided
+        final_temperature = temperature if temperature is not None else 1.0
+        final_max_tokens = max_completion_tokens if max_completion_tokens is not None else 2000
+        
+        # Validate inputs
+        if final_max_tokens < 1:
+            final_max_tokens = 2000
+        
+        # Build messages array with system and user roles
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        if user_message:
+            messages.append({"role": "user", "content": user_message})
+        
+        if not messages:
+            return ""
+        
+        # Call LiteLLM with chat format
+        response = await acompletion(
+            model=model,
+            messages=messages,
+            temperature=final_temperature,
+            max_tokens=final_max_tokens,
+        )
+        
+        # Extract text from response
+        if response and response.choices and len(response.choices) > 0:
+            choice = response.choices[0]
+            if choice.message and choice.message.content:
+                content = choice.message.content
+                if content and content.strip():
+                    return content.strip()
         
         return ""
     

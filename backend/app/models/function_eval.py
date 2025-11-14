@@ -14,8 +14,8 @@ class FunctionEvalConfig(Base):
     name = Column(String, nullable=False)  # Unique per CSV file, used as column name
     function_name = Column(String, nullable=False)  # Plugin name from evaluations registry
     config = Column(JSON, nullable=True)  # Optional per-eval config (JSON dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Unique constraint: name must be unique per CSV file
     __table_args__ = (
@@ -36,8 +36,8 @@ class FunctionEvalResult(Base):
     csv_row_id = Column(Integer, ForeignKey("csv_rows.id", ondelete="CASCADE"), nullable=False)
     score = Column(Float, nullable=False)  # Score from function evaluation
     details = Column(JSON, nullable=True)  # Optional details/metadata from evaluation
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Unique constraint: one result per config per row
     __table_args__ = (

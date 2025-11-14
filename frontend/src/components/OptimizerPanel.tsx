@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Evaluation, JudgeResult, FunctionEvalResult, JudgeConfig, FunctionEvalConfig, Metric, listMetrics, createOrUpdateMetric, deleteMetric, GepaConfig, listGepaConfigs, createGepaConfig, deleteGepaConfig, runGepa, Prompt } from '../services/api';
+import { Evaluation, JudgeResult, FunctionEvalResult, JudgeConfig, FunctionEvalConfig, Metric, listMetrics, createOrUpdateMetric, deleteMetric, GepaConfig, listGepaConfigs, createGepaConfig, updateGepaConfig, deleteGepaConfig, runGepa, subscribeToGepaProgress, GepaProgress, Prompt } from '../services/api';
 
 interface OptimizerPanelProps {
   csvFileId: number | null;
@@ -40,17 +40,30 @@ export default function OptimizerPanel({
   const [gepaConfigs, setGepaConfigs] = useState<GepaConfig[]>([]);
   const [isLoadingGepaConfigs, setIsLoadingGepaConfigs] = useState(false);
   const [isRunningGepa, setIsRunningGepa] = useState<number | null>(null); // config ID that's running
+  const [gepaProgress, setGepaProgress] = useState<Record<number, GepaProgress>>({});
   const [showGepaForm, setShowGepaForm] = useState(false);
+  const [editingGepaConfigId, setEditingGepaConfigId] = useState<number | null>(null);
   const [gepaFormData, setGepaFormData] = useState({
     name: '',
     base_prompt_id: null as number | null,
     judge_config_ids: [] as number[],
     function_eval_config_ids: [] as number[],
-    reflection_model: 'gpt-5',
     generator_model: 'gpt-5',
+    reflection_model: 'gpt-5',
+    generator_temperature: 1.0,
+    generator_max_tokens: 16384,
+    reflection_temperature: 1.0,
+    reflection_max_tokens: 16384,
     max_metric_calls: 10,
   });
   const [isSavingGepaConfig, setIsSavingGepaConfig] = useState(false);
+  // Local string states for number inputs to allow empty during editing
+  // Use null to mean "not editing", empty string means "editing but empty"
+  const [tempGeneratorTemperature, setTempGeneratorTemperature] = useState<string | null>(null);
+  const [tempGeneratorMaxTokens, setTempGeneratorMaxTokens] = useState<string | null>(null);
+  const [tempReflectionTemperature, setTempReflectionTemperature] = useState<string | null>(null);
+  const [tempReflectionMaxTokens, setTempReflectionMaxTokens] = useState<string | null>(null);
+  const [tempMaxMetricCalls, setTempMaxMetricCalls] = useState<string | null>(null);
 
   // Load GEPA configs
   useEffect(() => {
@@ -233,20 +246,100 @@ export default function OptimizerPanel({
     if (!csvFileId) return;
     
     setIsRunningGepa(configId);
-    try {
-      const result = await runGepa(configId);
-      // Reload configs
-      const configs = await listGepaConfigs(csvFileId);
-      setGepaConfigs(configs);
-      
-      // Notify parent to refresh prompts
-      if (onGepaRunComplete) {
-        onGepaRunComplete(result.new_prompt_id);
+    setGepaProgress(prev => ({
+      ...prev,
+      [configId]: {
+        status: 'running',
+        current_iteration: 0,
+        max_iterations: 0,
+        current_score: null,
+        best_score: null,
+        message: 'Starting...',
+        updated_at: new Date().toISOString(),
       }
+    }));
+    
+    // Start progress subscription BEFORE calling runGepa
+    let completed = false;
+    const unsubscribe = subscribeToGepaProgress(
+      configId,
+      (progress) => {
+        setGepaProgress(prev => ({
+          ...prev,
+          [configId]: progress
+        }));
+        
+        // Handle completion when progress shows completed
+        if (progress.status === 'completed' && !completed) {
+          completed = true;
+          setIsRunningGepa(null);
+          
+          // Reload configs
+          listGepaConfigs(csvFileId).then(configs => {
+            setGepaConfigs(configs);
+          }).catch(err => {
+            console.error('Failed to reload GEPA configs:', err);
+          });
+          
+          // Notify parent to refresh prompts if we have a new prompt ID
+          if (onGepaRunComplete && progress.new_prompt_id) {
+            onGepaRunComplete(progress.new_prompt_id);
+          }
+        } else if (progress.status === 'error' && !completed) {
+          completed = true;
+          setIsRunningGepa(null);
+        }
+      },
+      (error) => {
+        console.error('Progress stream error:', error);
+        if (!completed) {
+          completed = true;
+          setIsRunningGepa(null);
+          setGepaProgress(prev => ({
+            ...prev,
+            [configId]: {
+              ...prev[configId],
+              status: 'error',
+              message: `Error: ${error.message}`
+            }
+          }));
+        }
+      },
+      () => {
+        // Cleanup on complete
+        if (!completed) {
+          completed = true;
+          setIsRunningGepa(null);
+        }
+        setTimeout(() => {
+          setGepaProgress(prev => {
+            const newProgress = { ...prev };
+            delete newProgress[configId];
+            return newProgress;
+          });
+        }, 3000); // Keep progress visible for 3 seconds after completion
+      }
+    );
+    
+    try {
+      // Start the optimization (returns immediately now)
+      await runGepa(configId);
+      // Note: We don't wait for completion here - the progress stream will handle it
     } catch (err) {
-      console.error('Failed to run GEPA:', err);
-    } finally {
-      setIsRunningGepa(null);
+      console.error('Failed to start GEPA:', err);
+      if (!completed) {
+        completed = true;
+        setIsRunningGepa(null);
+        unsubscribe();
+        setGepaProgress(prev => ({
+          ...prev,
+          [configId]: {
+            ...prev[configId],
+            status: 'error',
+            message: `Failed to start: ${err instanceof Error ? err.message : 'Unknown error'}`
+          }
+        }));
+      }
     }
   }, [csvFileId, onGepaRunComplete]);
 
@@ -262,7 +355,30 @@ export default function OptimizerPanel({
     }
   }, [csvFileId]);
 
-  const handleCreateGepaConfig = useCallback(async () => {
+  const handleEditGepaConfig = useCallback((config: GepaConfig) => {
+    setEditingGepaConfigId(config.id);
+    setGepaFormData({
+      name: config.name,
+      base_prompt_id: config.base_prompt_id,
+      judge_config_ids: config.judge_config_ids || [],
+      function_eval_config_ids: config.function_eval_config_ids || [],
+      generator_model: config.generator_model,
+      reflection_model: config.reflection_model,
+      generator_temperature: config.generator_temperature,
+      generator_max_tokens: config.generator_max_tokens,
+      reflection_temperature: config.reflection_temperature,
+      reflection_max_tokens: config.reflection_max_tokens,
+      max_metric_calls: config.max_metric_calls,
+    });
+    setTempGeneratorTemperature(null);
+    setTempGeneratorMaxTokens(null);
+    setTempReflectionTemperature(null);
+    setTempReflectionMaxTokens(null);
+    setTempMaxMetricCalls(null);
+    setShowGepaForm(true);
+  }, []);
+
+  const handleSaveGepaConfig = useCallback(async () => {
     if (!csvFileId) return;
     
     if (!gepaFormData.name.trim()) {
@@ -282,16 +398,30 @@ export default function OptimizerPanel({
     
     setIsSavingGepaConfig(true);
     try {
-      await createGepaConfig({
-        csv_file_id: csvFileId,
+      const payload = {
         name: gepaFormData.name.trim(),
         base_prompt_id: gepaFormData.base_prompt_id!,
         judge_config_ids: gepaFormData.judge_config_ids.length > 0 ? gepaFormData.judge_config_ids : null,
         function_eval_config_ids: gepaFormData.function_eval_config_ids.length > 0 ? gepaFormData.function_eval_config_ids : null,
-        reflection_model: gepaFormData.reflection_model,
         generator_model: gepaFormData.generator_model,
+        reflection_model: gepaFormData.reflection_model,
+        generator_temperature: gepaFormData.generator_temperature,
+        generator_max_tokens: gepaFormData.generator_max_tokens,
+        reflection_temperature: gepaFormData.reflection_temperature,
+        reflection_max_tokens: gepaFormData.reflection_max_tokens,
         max_metric_calls: gepaFormData.max_metric_calls,
+      };
+
+      if (editingGepaConfigId) {
+        // Update existing config
+        await updateGepaConfig(editingGepaConfigId, payload);
+      } else {
+        // Create new config
+        await createGepaConfig({
+          csv_file_id: csvFileId,
+          ...payload,
       });
+      }
       
       // Reload configs
       const configs = await listGepaConfigs(csvFileId);
@@ -303,18 +433,28 @@ export default function OptimizerPanel({
         base_prompt_id: null,
         judge_config_ids: [],
         function_eval_config_ids: [],
-        reflection_model: 'gpt-5',
         generator_model: 'gpt-5',
+        reflection_model: 'gpt-5',
+        generator_temperature: 1.0,
+        generator_max_tokens: 16384,
+        reflection_temperature: 1.0,
+        reflection_max_tokens: 16384,
         max_metric_calls: 10,
       });
+      setTempGeneratorTemperature(null);
+      setTempGeneratorMaxTokens(null);
+      setTempReflectionTemperature(null);
+      setTempReflectionMaxTokens(null);
+      setTempMaxMetricCalls(null);
+      setEditingGepaConfigId(null);
       setShowGepaForm(false);
     } catch (err) {
-      console.error('Failed to create GEPA config:', err);
-      alert(`Failed to create GEPA config: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error(`Failed to ${editingGepaConfigId ? 'update' : 'create'} GEPA config:`, err);
+      alert(`Failed to ${editingGepaConfigId ? 'update' : 'create'} GEPA config: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsSavingGepaConfig(false);
     }
-  }, [csvFileId, gepaFormData]);
+  }, [csvFileId, gepaFormData, editingGepaConfigId]);
 
   return (
     <div style={{
@@ -340,7 +480,7 @@ export default function OptimizerPanel({
           OPTIMIZER
         </h2>
         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-          MONITOR EVALUATION SCORES AND SET THRESHOLDS TO TRACK PERFORMANCE ACROSS ALL EVALUATION TYPES.
+          MONITOR EVALUATION SCORES, SET THRESHOLDS, AND OPTIMIZE PROMPTS USING GEPA
         </p>
       </div>
       
@@ -704,158 +844,287 @@ export default function OptimizerPanel({
             borderTop: '1px solid var(--border-primary)',
           }}>
             <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '0.5rem',
+              padding: '0.75rem',
+              border: '1px solid var(--border-primary)',
+              borderRadius: '0',
+              backgroundColor: 'var(--bg-secondary)',
             }}>
-              <h3 style={{
-                margin: 0,
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'monospace',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                GEPA OPTIMIZER
-              </h3>
-              <button
-                onClick={() => {
-                  setShowGepaForm(true);
-                }}
-                disabled={!csvFileId || isRunningGepa !== null}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '0',
-                  cursor: (!csvFileId || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
-                  fontSize: '0.625rem',
-                  color: (!csvFileId || isRunningGepa !== null) ? 'var(--text-tertiary)' : 'var(--text-primary)',
-                  fontWeight: '700',
-                  fontFamily: 'monospace',
-                  textTransform: 'uppercase',
-                  opacity: (!csvFileId || isRunningGepa !== null) ? 0.5 : 1,
-                }}
-              >
-                + CREATE
-              </button>
-            </div>
-            
-            {isLoadingGepaConfigs ? (
-              <div style={{
-                padding: '0.5rem',
-                fontSize: '0.625rem',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'monospace',
-              }}>
-                LOADING...
-              </div>
-            ) : gepaConfigs.length === 0 ? (
-              <div style={{
-                padding: '0.5rem',
-                fontSize: '0.625rem',
-                color: 'var(--text-tertiary)',
-                fontFamily: 'monospace',
-                fontStyle: 'italic',
-              }}>
-                NO GEPA CONFIGS. CLICK CREATE TO ADD ONE.
-              </div>
-            ) : (
               <div style={{
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '0.75rem',
               }}>
-                {gepaConfigs.map((config) => {
-                  const basePrompt = prompts.find(p => p.id === config.base_prompt_id);
-                  const basePromptName = basePrompt 
-                    ? `${basePrompt.name || 'Unnamed'} (v${basePrompt.version})`
-                    : `Prompt #${config.base_prompt_id}`;
-                  const isRunning = isRunningGepa === config.id;
-                  
-                  return (
-                    <div
-                      key={config.id}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: '0',
-                        backgroundColor: 'var(--bg-secondary)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '0.625rem',
-                          color: 'var(--text-primary)',
-                          fontFamily: 'monospace',
-                          fontWeight: '700',
-                          textTransform: 'uppercase',
-                          marginBottom: '0.25rem',
-                        }}>
-                          {config.name}
-                        </div>
-                        <div style={{
-                          fontSize: '0.5rem',
-                          color: 'var(--text-tertiary)',
-                          fontFamily: 'monospace',
-                        }}>
-                          Base: {basePromptName} | Max calls: {config.max_metric_calls}
-                        </div>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        gap: '0.25rem',
-                      }}>
-                        <button
-                          onClick={() => handleRunGepa(config.id)}
-                          disabled={isRunning || isRunningGepa !== null}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            backgroundColor: isRunning ? 'var(--accent-primary)' : 'var(--bg-secondary)',
-                            border: '1px solid var(--border-primary)',
-                            borderRadius: '0',
-                            cursor: (isRunning || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
-                            fontSize: '0.625rem',
-                            color: isRunning ? 'white' : 'var(--text-primary)',
-                            fontWeight: '700',
-                            fontFamily: 'monospace',
-                            textTransform: 'uppercase',
-                            opacity: (isRunning || isRunningGepa !== null) && !isRunning ? 0.5 : 1,
-                          }}
-                        >
-                          {isRunning ? 'RUNNING...' : 'RUN'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteGepaConfig(config.id)}
-                          disabled={isRunning || isRunningGepa !== null}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            backgroundColor: 'var(--bg-secondary)',
-                            border: '1px solid var(--border-primary)',
-                            borderRadius: '0',
-                            cursor: (isRunning || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
-                            fontSize: '0.625rem',
-                            color: 'var(--text-primary)',
-                            fontWeight: '700',
-                            fontFamily: 'monospace',
-                            textTransform: 'uppercase',
-                            opacity: (isRunning || isRunningGepa !== null) ? 0.5 : 1,
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                <h3 style={{
+                  margin: 0,
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'monospace',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}>
+                  GEPA OPTIMIZER
+                </h3>
+                <button
+                  onClick={() => {
+                    setTempGeneratorTemperature(null);
+                    setTempGeneratorMaxTokens(null);
+                    setTempReflectionTemperature(null);
+                    setTempReflectionMaxTokens(null);
+                    setTempMaxMetricCalls(null);
+                    setEditingGepaConfigId(null);
+                    setShowGepaForm(true);
+                  }}
+                  disabled={!csvFileId || isRunningGepa !== null}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    backgroundColor: (!csvFileId || isRunningGepa !== null) ? 'var(--bg-tertiary)' : 'var(--bg-elevated)',
+                    border: `1px solid ${(!csvFileId || isRunningGepa !== null) ? 'var(--border-primary)' : 'var(--accent-primary)'}`,
+                    borderRadius: '0',
+                    cursor: (!csvFileId || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
+                    fontSize: '0.625rem',
+                    color: (!csvFileId || isRunningGepa !== null) ? 'var(--text-tertiary)' : 'var(--accent-primary)',
+                    fontWeight: '700',
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    opacity: (!csvFileId || isRunningGepa !== null) ? 0.5 : 1,
+                    transition: 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (csvFileId && isRunningGepa === null) {
+                      e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (csvFileId && isRunningGepa === null) {
+                      e.currentTarget.style.outline = 'none';
+                    }
+                  }}
+                >
+                  + CREATE
+                </button>
               </div>
-            )}
+              
+              {isLoadingGepaConfigs ? (
+                <div style={{
+                  padding: '0.5rem',
+                  fontSize: '0.625rem',
+                  color: 'var(--text-tertiary)',
+                  fontFamily: 'monospace',
+                }}>
+                  LOADING...
+                </div>
+              ) : gepaConfigs.length === 0 ? (
+                <div style={{
+                  padding: '0.5rem',
+                  fontSize: '0.625rem',
+                  color: 'var(--text-tertiary)',
+                  fontFamily: 'monospace',
+                  fontStyle: 'italic',
+                }}>
+                  NO GEPA CONFIGS. CLICK CREATE TO ADD ONE.
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}>
+                  {gepaConfigs.map((config) => {
+                    const basePrompt = prompts.find(p => p.id === config.base_prompt_id);
+                    const basePromptName = basePrompt 
+                      ? `${basePrompt.name || 'Unnamed'} (v${basePrompt.version})`
+                      : `Prompt #${config.base_prompt_id}`;
+                    const isRunning = isRunningGepa === config.id;
+                    const progress = gepaProgress[config.id];
+                    const isActuallyRunning = isRunning && progress?.status === 'running';
+                    
+                    return (
+                      <div
+                        key={config.id}
+                        style={{
+                          padding: '0.5rem 0.75rem',
+                          border: `1px solid ${isActuallyRunning ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                          borderRadius: '0',
+                          backgroundColor: isActuallyRunning ? 'var(--bg-elevated)' : 'var(--bg-elevated)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem',
+                          transition: 'none',
+                          cursor: (isActuallyRunning || isRunningGepa !== null) ? 'default' : 'pointer',
+                        }}
+                        onClick={(e) => {
+                          // Don't open edit if clicking on buttons
+                          if ((e.target as HTMLElement).closest('button')) {
+                            return;
+                          }
+                          if (!isActuallyRunning && isRunningGepa === null) {
+                            handleEditGepaConfig(config);
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isActuallyRunning && isRunningGepa === null) {
+                            e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                            e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                            e.currentTarget.style.outlineOffset = '-2px';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActuallyRunning) {
+                            e.currentTarget.style.borderColor = 'var(--border-primary)';
+                            e.currentTarget.style.outline = 'none';
+                          }
+                        }}
+                      >
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontSize: '0.625rem',
+                              color: 'var(--text-primary)',
+                              fontFamily: 'monospace',
+                              fontWeight: '700',
+                              textTransform: 'uppercase',
+                              marginBottom: '0.25rem',
+                            }}>
+                              {config.name}
+                            </div>
+                            <div style={{
+                              fontSize: '0.5rem',
+                              color: 'var(--text-tertiary)',
+                              fontFamily: 'monospace',
+                            }}>
+                              Base: {basePromptName} | Max calls: {config.max_metric_calls}
+                            </div>
+                          </div>
+                          <div style={{
+                            display: 'flex',
+                            gap: '0.25rem',
+                          }}>
+                            <button
+                              onClick={() => handleRunGepa(config.id)}
+                              disabled={isActuallyRunning || isRunningGepa !== null}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                backgroundColor: isActuallyRunning ? 'var(--accent-primary)' : 'transparent',
+                                border: `1px solid ${isActuallyRunning ? 'var(--accent-primary)' : 'var(--accent-success)'}`,
+                                borderRadius: '0',
+                                cursor: (isActuallyRunning || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
+                                fontSize: '0.625rem',
+                                color: isActuallyRunning ? 'white' : 'var(--accent-success)',
+                                fontWeight: '700',
+                                fontFamily: 'monospace',
+                                textTransform: 'uppercase',
+                                opacity: (isActuallyRunning || isRunningGepa !== null) && !isActuallyRunning ? 0.5 : 1,
+                                transition: 'none',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isActuallyRunning && isRunningGepa === null) {
+                                  e.currentTarget.style.outline = '2px solid var(--accent-success)';
+                                  e.currentTarget.style.outlineOffset = '-2px';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isActuallyRunning && isRunningGepa === null) {
+                                  e.currentTarget.style.outline = 'none';
+                                }
+                              }}
+                            >
+                              {isActuallyRunning ? 'RUNNING...' : 'RUN'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGepaConfig(config.id)}
+                              disabled={isActuallyRunning || isRunningGepa !== null}
+                              style={{
+                                padding: '0.25rem 0.5rem',
+                                backgroundColor: 'transparent',
+                                border: '1px solid var(--accent-danger)',
+                                borderRadius: '0',
+                                cursor: (isRunning || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
+                                fontSize: '0.625rem',
+                                color: 'var(--accent-danger)',
+                                fontWeight: '700',
+                                fontFamily: 'monospace',
+                                textTransform: 'uppercase',
+                                opacity: (isActuallyRunning || isRunningGepa !== null) ? 0.5 : 1,
+                                transition: 'none',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isActuallyRunning && isRunningGepa === null) {
+                                  e.currentTarget.style.outline = '2px solid var(--accent-danger)';
+                                  e.currentTarget.style.outlineOffset = '-2px';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isActuallyRunning && isRunningGepa === null) {
+                                  e.currentTarget.style.outline = 'none';
+                                }
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Progress visualization */}
+                        {progress && progress.max_iterations > 0 && (
+                          <div style={{
+                            padding: '0.5rem',
+                            backgroundColor: progress.status === 'error' 
+                              ? 'rgba(239, 68, 68, 0.1)' 
+                              : progress.status === 'completed'
+                              ? 'rgba(34, 197, 94, 0.1)'
+                              : 'rgba(59, 130, 246, 0.1)',
+                            border: `1px solid ${progress.status === 'error' 
+                              ? 'rgba(239, 68, 68, 0.3)' 
+                              : progress.status === 'completed'
+                              ? 'rgba(34, 197, 94, 0.3)'
+                              : 'rgba(59, 130, 246, 0.3)'}`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.25rem',
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              fontSize: '0.5rem',
+                              color: 'var(--text-tertiary)',
+                              fontFamily: 'monospace',
+                            }}>
+                              <span>Iteration {progress.current_iteration} / {progress.max_iterations}</span>
+                              <span>{Math.round((progress.current_iteration / progress.max_iterations) * 100)}%</span>
+                            </div>
+                            <div style={{
+                              width: '100%',
+                              height: '4px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              overflow: 'hidden',
+                            }}>
+                              <div style={{
+                                width: `${Math.min(100, (progress.current_iteration / progress.max_iterations) * 100)}%`,
+                                height: '100%',
+                                backgroundColor: progress.status === 'error' 
+                                  ? '#ef4444' 
+                                  : progress.status === 'completed'
+                                  ? '#22c55e'
+                                  : 'var(--accent-primary)',
+                                transition: 'width 0.3s ease',
+                              }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
           
           {/* GEPA Config Creation Form Modal */}
@@ -871,7 +1140,15 @@ export default function OptimizerPanel({
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 1000,
-            }} onClick={() => setShowGepaForm(false)}>
+            }} onClick={() => {
+              setTempGeneratorTemperature(null);
+              setTempGeneratorMaxTokens(null);
+              setTempReflectionTemperature(null);
+              setTempReflectionMaxTokens(null);
+              setTempMaxMetricCalls(null);
+              setEditingGepaConfigId(null);
+              setShowGepaForm(false);
+            }}>
               <div style={{
                 backgroundColor: 'var(--bg-elevated)',
                 border: '1px solid var(--border-primary)',
@@ -897,10 +1174,18 @@ export default function OptimizerPanel({
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
                   }}>
-                    CREATE GEPA CONFIG
+                    {editingGepaConfigId ? 'EDIT GEPA CONFIG' : 'CREATE GEPA CONFIG'}
                   </h3>
                   <button
-                    onClick={() => setShowGepaForm(false)}
+                    onClick={() => {
+                      setTempGeneratorTemperature(null);
+                      setTempGeneratorMaxTokens(null);
+                      setTempReflectionTemperature(null);
+                      setTempReflectionMaxTokens(null);
+                      setTempMaxMetricCalls(null);
+                      setEditingGepaConfigId(null);
+                      setShowGepaForm(false);
+                    }}
                     style={{
                       padding: '0.25rem 0.5rem',
                       backgroundColor: 'transparent',
@@ -1142,71 +1427,339 @@ export default function OptimizerPanel({
                     </div>
                   </div>
                   
-                  {/* Models */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '1rem',
-                  }}>
-                    <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        fontWeight: '700',
-                        color: 'var(--text-secondary)',
-                        fontFamily: 'monospace',
-                        textTransform: 'uppercase',
-                        marginBottom: '0.5rem',
-                      }}>
-                        REFLECTION MODEL
-                      </label>
-                      <input
-                        type="text"
-                        value={gepaFormData.reflection_model}
-                        onChange={(e) => setGepaFormData({ ...gepaFormData, reflection_model: e.target.value })}
-                        placeholder="gpt-5"
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem 0.75rem',
-                          border: '1px solid var(--border-primary)',
-                          borderRadius: '0',
-                          fontSize: '0.8125rem',
-                          fontFamily: 'monospace',
-                          backgroundColor: 'var(--bg-secondary)',
-                          color: 'var(--text-primary)',
-                          boxSizing: 'border-box',
-                        }}
-                      />
+                  {/* Generator Model */}
+                  <div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      color: 'var(--text-secondary)',
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.75rem',
+                    }}>
+                      GENERATOR MODEL *
                     </div>
-                    <div>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '0.75rem',
-                        fontWeight: '700',
-                        color: 'var(--text-secondary)',
-                        fontFamily: 'monospace',
-                        textTransform: 'uppercase',
-                        marginBottom: '0.5rem',
-                      }}>
-                        GENERATOR MODEL
-                      </label>
-                      <input
-                        type="text"
-                        value={gepaFormData.generator_model}
-                        onChange={(e) => setGepaFormData({ ...gepaFormData, generator_model: e.target.value })}
-                        placeholder="gpt-5"
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem 0.75rem',
-                          border: '1px solid var(--border-primary)',
-                          borderRadius: '0',
-                          fontSize: '0.8125rem',
+                    <div style={{
+                      padding: '0.75rem',
+                      border: '1px solid var(--border-primary)',
+                      backgroundColor: 'var(--bg-secondary)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}>
+                      <div>
+                        <label style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          color: 'var(--text-secondary)',
                           fontFamily: 'monospace',
-                          backgroundColor: 'var(--bg-secondary)',
-                          color: 'var(--text-primary)',
-                          boxSizing: 'border-box',
-                        }}
-                      />
+                          textTransform: 'uppercase',
+                          marginBottom: '0.5rem',
+                        }}>
+                          MODEL ID
+                        </label>
+                        <input
+                          type="text"
+                          value={gepaFormData.generator_model}
+                          onChange={(e) => setGepaFormData({ ...gepaFormData, generator_model: e.target.value })}
+                          placeholder="gpt-5"
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.75rem',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: '0',
+                            fontSize: '0.8125rem',
+                            fontFamily: 'monospace',
+                            backgroundColor: 'var(--bg-elevated)',
+                            color: 'var(--text-primary)',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                        <div style={{
+                          fontSize: '0.5rem',
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'monospace',
+                          marginTop: '0.25rem',
+                          fontStyle: 'italic',
+                        }}>
+                          Model you're optimizing for
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.75rem',
+                      }}>
+                        <div>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'monospace',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem',
+                          }}>
+                            TEMPERATURE
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={tempGeneratorTemperature !== null ? tempGeneratorTemperature : gepaFormData.generator_temperature}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempGeneratorTemperature(val);
+                              const numVal = parseFloat(val);
+                              if (val !== '' && !isNaN(numVal) && numVal >= 0 && numVal <= 2) {
+                                setGepaFormData({ ...gepaFormData, generator_temperature: numVal });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value === '' ? gepaFormData.generator_temperature.toString() : e.target.value;
+                              const numVal = parseFloat(val);
+                              if (isNaN(numVal) || numVal < 0 || numVal > 2) {
+                                setTempGeneratorTemperature(null);
+                              } else {
+                                setTempGeneratorTemperature(null);
+                                setGepaFormData({ ...gepaFormData, generator_temperature: numVal });
+                              }
+                            }}
+                            onFocus={() => setTempGeneratorTemperature(gepaFormData.generator_temperature.toString())}
+                            placeholder="1.0"
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem 0.75rem',
+                              border: '1px solid var(--border-primary)',
+                              borderRadius: '0',
+                              fontSize: '0.8125rem',
+                              fontFamily: 'monospace',
+                              backgroundColor: 'var(--bg-elevated)',
+                              color: 'var(--text-primary)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'monospace',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem',
+                          }}>
+                            MAX TOKENS
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={tempGeneratorMaxTokens !== null ? tempGeneratorMaxTokens : gepaFormData.generator_max_tokens}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempGeneratorMaxTokens(val);
+                              const numVal = parseInt(val);
+                              if (val !== '' && !isNaN(numVal) && numVal >= 1) {
+                                setGepaFormData({ ...gepaFormData, generator_max_tokens: numVal });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value === '' ? gepaFormData.generator_max_tokens.toString() : e.target.value;
+                              const numVal = parseInt(val);
+                              if (isNaN(numVal) || numVal < 1) {
+                                setTempGeneratorMaxTokens(null);
+                              } else {
+                                setTempGeneratorMaxTokens(null);
+                                setGepaFormData({ ...gepaFormData, generator_max_tokens: numVal });
+                              }
+                            }}
+                            onFocus={() => setTempGeneratorMaxTokens(gepaFormData.generator_max_tokens.toString())}
+                            placeholder="16384"
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem 0.75rem',
+                              border: '1px solid var(--border-primary)',
+                              borderRadius: '0',
+                              fontSize: '0.8125rem',
+                              fontFamily: 'monospace',
+                              backgroundColor: 'var(--bg-elevated)',
+                              color: 'var(--text-primary)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Reflection Model */}
+                  <div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      color: 'var(--text-secondary)',
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      marginBottom: '0.75rem',
+                    }}>
+                      REFLECTION MODEL
+                    </div>
+                    <div style={{
+                      padding: '0.75rem',
+                      border: '1px solid var(--border-primary)',
+                      backgroundColor: 'var(--bg-secondary)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}>
+                      <div>
+                        <label style={{
+                          display: 'block',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'monospace',
+                          textTransform: 'uppercase',
+                          marginBottom: '0.5rem',
+                        }}>
+                          MODEL ID
+                        </label>
+                        <input
+                          type="text"
+                          value={gepaFormData.reflection_model}
+                          onChange={(e) => setGepaFormData({ ...gepaFormData, reflection_model: e.target.value })}
+                          placeholder="gpt-5"
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.75rem',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: '0',
+                            fontSize: '0.8125rem',
+                            fontFamily: 'monospace',
+                            backgroundColor: 'var(--bg-elevated)',
+                            color: 'var(--text-primary)',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                        <div style={{
+                          fontSize: '0.5rem',
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'monospace',
+                          marginTop: '0.25rem',
+                          fontStyle: 'italic',
+                        }}>
+                          Model for meta-prompting (can be different)
+                        </div>
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.75rem',
+                      }}>
+                        <div>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'monospace',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem',
+                          }}>
+                            TEMPERATURE
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={tempReflectionTemperature !== null ? tempReflectionTemperature : gepaFormData.reflection_temperature}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempReflectionTemperature(val);
+                              const numVal = parseFloat(val);
+                              if (val !== '' && !isNaN(numVal) && numVal >= 0 && numVal <= 2) {
+                                setGepaFormData({ ...gepaFormData, reflection_temperature: numVal });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value === '' ? gepaFormData.reflection_temperature.toString() : e.target.value;
+                              const numVal = parseFloat(val);
+                              if (isNaN(numVal) || numVal < 0 || numVal > 2) {
+                                setTempReflectionTemperature(null);
+                              } else {
+                                setTempReflectionTemperature(null);
+                                setGepaFormData({ ...gepaFormData, reflection_temperature: numVal });
+                              }
+                            }}
+                            onFocus={() => setTempReflectionTemperature(gepaFormData.reflection_temperature.toString())}
+                            placeholder="1.0"
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem 0.75rem',
+                              border: '1px solid var(--border-primary)',
+                              borderRadius: '0',
+                              fontSize: '0.8125rem',
+                              fontFamily: 'monospace',
+                              backgroundColor: 'var(--bg-elevated)',
+                              color: 'var(--text-primary)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{
+                            display: 'block',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'monospace',
+                            textTransform: 'uppercase',
+                            marginBottom: '0.5rem',
+                          }}>
+                            MAX TOKENS
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={tempReflectionMaxTokens !== null ? tempReflectionMaxTokens : gepaFormData.reflection_max_tokens}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempReflectionMaxTokens(val);
+                              const numVal = parseInt(val);
+                              if (val !== '' && !isNaN(numVal) && numVal >= 1) {
+                                setGepaFormData({ ...gepaFormData, reflection_max_tokens: numVal });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value === '' ? gepaFormData.reflection_max_tokens.toString() : e.target.value;
+                              const numVal = parseInt(val);
+                              if (isNaN(numVal) || numVal < 1) {
+                                setTempReflectionMaxTokens(null);
+                              } else {
+                                setTempReflectionMaxTokens(null);
+                                setGepaFormData({ ...gepaFormData, reflection_max_tokens: numVal });
+                              }
+                            }}
+                            onFocus={() => setTempReflectionMaxTokens(gepaFormData.reflection_max_tokens.toString())}
+                            placeholder="16384"
+                            style={{
+                              width: '100%',
+                              padding: '0.5rem 0.75rem',
+                              border: '1px solid var(--border-primary)',
+                              borderRadius: '0',
+                              fontSize: '0.8125rem',
+                              fontFamily: 'monospace',
+                              backgroundColor: 'var(--bg-elevated)',
+                              color: 'var(--text-primary)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                   
@@ -1226,8 +1779,26 @@ export default function OptimizerPanel({
                     <input
                       type="number"
                       min="1"
-                      value={gepaFormData.max_metric_calls}
-                      onChange={(e) => setGepaFormData({ ...gepaFormData, max_metric_calls: parseInt(e.target.value) || 10 })}
+                      value={tempMaxMetricCalls !== null ? tempMaxMetricCalls : gepaFormData.max_metric_calls}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTempMaxMetricCalls(val);
+                        const numVal = parseInt(val);
+                        if (val !== '' && !isNaN(numVal) && numVal >= 1) {
+                          setGepaFormData({ ...gepaFormData, max_metric_calls: numVal });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value === '' ? gepaFormData.max_metric_calls.toString() : e.target.value;
+                        const numVal = parseInt(val);
+                        if (isNaN(numVal) || numVal < 1) {
+                          setTempMaxMetricCalls(null);
+                        } else {
+                          setTempMaxMetricCalls(null);
+                          setGepaFormData({ ...gepaFormData, max_metric_calls: numVal });
+                        }
+                      }}
+                      onFocus={() => setTempMaxMetricCalls(gepaFormData.max_metric_calls.toString())}
                       style={{
                         width: '100%',
                         padding: '0.5rem 0.75rem',
@@ -1250,7 +1821,14 @@ export default function OptimizerPanel({
                     marginTop: '0.5rem',
                   }}>
                     <button
-                      onClick={() => setShowGepaForm(false)}
+                      onClick={() => {
+                        setTempGeneratorTemperature(null);
+                        setTempGeneratorMaxTokens(null);
+                        setTempReflectionTemperature(null);
+                        setTempReflectionMaxTokens(null);
+                        setTempMaxMetricCalls(null);
+                        setShowGepaForm(false);
+                      }}
                       disabled={isSavingGepaConfig}
                       style={{
                         padding: '0.5rem 1rem',
@@ -1269,7 +1847,7 @@ export default function OptimizerPanel({
                       CANCEL
                     </button>
                     <button
-                      onClick={handleCreateGepaConfig}
+                      onClick={handleSaveGepaConfig}
                       disabled={isSavingGepaConfig}
                       style={{
                         padding: '0.5rem 1rem',
@@ -1285,7 +1863,7 @@ export default function OptimizerPanel({
                         opacity: isSavingGepaConfig ? 0.5 : 1,
                       }}
                     >
-                      {isSavingGepaConfig ? 'SAVING...' : 'CREATE'}
+                      {isSavingGepaConfig ? 'SAVING...' : (editingGepaConfigId ? 'SAVE' : 'CREATE')}
                     </button>
                   </div>
                 </div>

@@ -10,13 +10,14 @@ class Prompt(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=True)  # Prompt name (like git branch name)
-    content = Column(Text, nullable=False)  # The prompt template with {{variable}} syntax
+    system_prompt = Column(Text, nullable=False)  # System prompt template (can include {{variable}} syntax for columns)
+    user_message_column = Column(String, nullable=True)  # Column name that contains the user message for each row
     csv_file_id = Column(Integer, ForeignKey("csv_files.id", ondelete="CASCADE"), nullable=True)  # Optional link to specific CSV file
     version = Column(Integer, default=1)  # Version number for this prompt
     commit_message = Column(Text, nullable=True)  # Update message (like git commit message)
     parent_prompt_id = Column(Integer, ForeignKey("prompts.id", ondelete="SET NULL"), nullable=True)  # Reference to parent prompt (for versioning)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     csv_file = relationship("CSVFile", foreign_keys=[csv_file_id])
     parent_prompt = relationship("Prompt", remote_side=[id], backref="versions")

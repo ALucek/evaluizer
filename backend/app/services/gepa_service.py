@@ -1,7 +1,10 @@
 """GEPA (Reflective Prompt Evolution) optimization service"""
+# Apply nest_asyncio to allow nested event loops (needed for LiteLLM compatibility)
+import nest_asyncio
+nest_asyncio.apply()
+
 import random
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
@@ -14,34 +17,27 @@ except ImportError:
 from app.models.gepa import GepaConfig
 from app.models.prompt import Prompt
 from app.models.csv_data import CSVFile, CSVRow
-from app.models.evaluation import Evaluation
 from app.models.judge import JudgeConfig
 from app.models.function_eval import FunctionEvalConfig
 from app.services.llm_service import llm_service
 from app.services.function_eval_service import run_function_evaluation
+from app.services.gepa_progress import update_progress, set_complete, set_error, clear_progress
 from app.utils import parse_json_safe, get_root_prompt_id, get_next_prompt_version
-
-
-def _run_async_sync(coro):
-    """Helper to run async code from sync context, handling existing event loops"""
-    try:
-        loop = asyncio.get_running_loop()
-        # We're in an async context with a running loop
-        # Use a thread pool to run the coroutine
-        import concurrent.futures
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
-            return future.result()
-    except RuntimeError:
-        # No running loop, safe to use asyncio.run
-        return asyncio.run(coro)
 
 
 class EvalsBackedAdapter:
     """
-    Adapter for GEPA that integrates with Evaluizer's evaluation system.
-    Mirrors EvalsBackedSummarizationAdapter from the cookbook.
+    Minimal adapter for GEPA that integrates with Evaluizer's evaluation system.
+    Mirrors EvalsBackedSummarizationAdapter from OpenAI's cookbook.
+    
+    Key methods:
+      - evaluate(...) -> EvaluationBatch (scores + outputs + feedback-rich trajectories)
+      - get_components_to_update(...) returns the prompt to update
+      - make_reflective_dataset(...) packages examples for reflection
     """
+    
+    # Use GEPA's default reflection flow (like OpenAI's example)
+    propose_new_texts = None
     
     def __init__(
         self,
@@ -53,7 +49,8 @@ class EvalsBackedAdapter:
         function_eval_configs: List[FunctionEvalConfig],
         generator_model: str,
         generator_temperature: float = 1.0,
-        generator_max_tokens: int = 2000
+        generator_max_tokens: int = 2000,
+        user_message_column: Optional[str] = None
     ):
         self.db = db
         self.gepa_config = gepa_config
@@ -62,126 +59,167 @@ class EvalsBackedAdapter:
         self.judge_configs = judge_configs
         self.function_eval_configs = function_eval_configs
         self.generator_model = generator_model
-        self.generator_temperature = generator_temperature
-        self.generator_max_tokens = generator_max_tokens
-        self.reflection_model = gepa_config.reflection_model
+        self.generator_temperature = float(generator_temperature) if generator_temperature is not None else 1.0
+        self.generator_max_tokens = int(generator_max_tokens) if generator_max_tokens is not None and generator_max_tokens > 0 else 2000
         
-        # Use GEPA's default reflection with template preservation instruction
-        self.propose_new_texts = self._propose_new_texts_with_template_preservation
+        self.user_message_column = user_message_column
+        self.config_id = gepa_config.id
+        self._evaluation_count = 0
+        
+    def _run_async(self, coro):
+        """
+        Run async coroutine synchronously from sync context.
+        
+        Since nest_asyncio is applied at thread start, we can use run_until_complete
+        on the existing event loop. This keeps LiteLLM's queues bound to the same loop.
+        """
+        try:
+            # Get the running event loop (we're inside asyncio.run() in thread)
+            loop = asyncio.get_running_loop()
+            # nest_asyncio was applied at thread start, so this works
+            return loop.run_until_complete(coro)
+        except RuntimeError:
+            # No running loop - safe to use asyncio.run() directly
+            return asyncio.run(coro)
     
-    def _build_template_preservation_instructions(self) -> str:
-        """Build instructions for preserving template variables"""
-        return "CRITICAL: Preserve all {{column_name}} template variables exactly as shown - they are placeholders that will be replaced with actual data."
+    async def _generate_output(self, system_prompt: str, row_data: Dict[str, Any], user_message_column: Optional[str] = None) -> str:
+        """Generate output using the system prompt and row data with chat format"""
+        try:
+            # Render the system prompt template with row data
+            rendered_system_prompt = llm_service.render_prompt(system_prompt, row_data, self.available_columns)
+            if not rendered_system_prompt or not rendered_system_prompt.strip():
+                raise ValueError(f"Rendered system prompt is empty. Original prompt: {system_prompt[:100]}...")
+            
+            # Get user message from the specified column if provided
+            user_message = ""
+            if user_message_column:
+                if user_message_column not in self.available_columns:
+                    raise ValueError(f"User message column '{user_message_column}' not found in available columns")
+                user_message = str(row_data.get(user_message_column, ""))
+                if not user_message.strip():
+                    raise ValueError(f"User message column '{user_message_column}' is empty for this row")
+            
+            # Use chat completion with system and user messages
+            output = await llm_service.chat_completion(
+                system_prompt=rendered_system_prompt,
+                user_message=user_message,
+                model=self.generator_model,
+                temperature=self.generator_temperature,
+                max_completion_tokens=self.generator_max_tokens
+            )
+            
+            if not output:
+                raise ValueError(f"LLM returned empty output for system prompt: {rendered_system_prompt[:200]}...")
+            
+            return output.strip()
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in _generate_output: {str(e)}")
+            logger.error(f"System prompt: {system_prompt[:200] if system_prompt else 'None'}...")
+            logger.error(f"User message column: {user_message_column}")
+            logger.error(f"Row data keys: {list(row_data.keys()) if row_data else 'None'}")
+            raise
     
-    def _propose_new_texts_with_template_preservation(
+    async def _evaluate_single_item(
         self,
-        candidate: Dict[str, str],
-        reflective_dataset: Dict[str, List[Dict[str, Any]]],
-        components_to_update: List[str]
-    ) -> Dict[str, str]:
-        """
-        Propose new candidate prompts using default meta prompt with template preservation.
+        item: Dict[str, Any],
+        system_prompt: str,
+        capture_traces: bool
+    ) -> tuple[str, float, Dict[str, Any], str]:
+        """Evaluate a single input item asynchronously"""
+        row_data = item.get("row_data", {})
+        csv_row_id = item.get("csv_row_id")
         
-        Args:
-            candidate: Current candidate with "system_prompt" key
-            reflective_dataset: Dataset from make_reflective_dataset
-            components_to_update: List of component names to update
-            
-        Returns:
-            Dictionary with updated components (e.g., {"system_prompt": "new prompt"})
-        """
-        current_prompt = candidate.get("system_prompt", "")
-        examples = reflective_dataset.get("system_prompt", [])
+        # 1) Generate output
+        try:
+            summary = await self._generate_output(system_prompt, row_data, self.user_message_column)
+            if not summary or not summary.strip():
+                return "", 0.0, {}, "Generation returned empty output"
+        except Exception as e:
+            import traceback
+            error_msg = f"Generation failed: {str(e)}\n{traceback.format_exc()}"
+            return "", 0.0, {}, error_msg
         
-        # Build feedback summary from examples
-        feedback_parts = []
-        scores = []
-        for example in examples:
-            feedback = example.get("Feedback", "")
-            if feedback:
+        # 2) Grade using judge configs and function eval configs
+        grader_scores: Dict[str, float] = {}
+        all_scores: List[float] = []
+        feedback_parts: List[str] = []
+        
+        # Run judge configs in parallel
+        async def evaluate_judge(judge_config):
+            """Evaluate a single judge config"""
+            try:
+                row_data_with_output = dict(row_data)
+                row_data_with_output["Output"] = summary
+                complete_prompt = llm_service.build_judge_prompt(
+                    judge_config.prompt,
+                    row_data_with_output,
+                    self.available_columns + ["Output"]
+                )
+                judge_output = await llm_service.completion(
+                    complete_prompt,
+                    model=judge_config.model,
+                    temperature=judge_config.temperature,
+                    max_completion_tokens=judge_config.max_tokens
+                )
+                if not judge_output or not judge_output.strip():
+                    return f"judge_{judge_config.name}", 0.0, f"{judge_config.name}: empty judge output"
+                score = llm_service.parse_judge_score(judge_output)
+                return f"judge_{judge_config.name}", score, f"{judge_config.name}: {score:.3f}"
+            except Exception as e:
+                import traceback
+                error_detail = f"{str(e)}"
+                return f"judge_{judge_config.name}", 0.0, f"{judge_config.name}: failed ({error_detail})"
+        
+        # Wait for all judge evaluations in parallel
+        if self.judge_configs:
+            judge_tasks = [evaluate_judge(jc) for jc in self.judge_configs]
+            judge_results = await asyncio.gather(*judge_tasks)
+            for key, score, feedback in judge_results:
+                grader_scores[key] = score
+                all_scores.append(score)
                 feedback_parts.append(feedback)
-            metrics = example.get("metrics", {})
-            if "combined" in metrics:
-                scores.append(metrics["combined"])
         
-        feedback_summary = "\n".join(feedback_parts) if feedback_parts else "No specific feedback available."
+        # Run function eval configs (synchronous, but fast)
+        for function_eval_config in self.function_eval_configs:
+            try:
+                result_dict = run_function_evaluation(
+                    name=function_eval_config.function_name,
+                    row=row_data,
+                    output=summary,
+                    config=function_eval_config.config
+                )
+                if "score" not in result_dict:
+                    raise ValueError(f"No score in result: {result_dict}")
+                score = float(result_dict["score"])
+                grader_scores[f"function_{function_eval_config.name}"] = score
+                all_scores.append(score)
+                feedback_parts.append(f"{function_eval_config.name}: {score:.3f}")
+            except Exception as e:
+                import traceback
+                error_detail = f"{str(e)}"
+                score = 0.0
+                grader_scores[f"function_{function_eval_config.name}"] = score
+                all_scores.append(score)
+                feedback_parts.append(f"{function_eval_config.name}: failed ({error_detail})")
         
-        if scores:
-            avg_score = sum(scores) / len(scores)
-            feedback_summary = f"Average score: {avg_score:.3f}\n\n{feedback_summary}"
+        # 3) Calculate combined score
+        scalar = sum(all_scores) / len(all_scores) if all_scores else 0.0
+        feedback = "; ".join(feedback_parts) if feedback_parts else "All graders passed; keep precision and coverage."
         
-        # Use GEPA's default reflection prompt structure with template preservation instruction
-        template_instruction = self._build_template_preservation_instructions()
+        trajectory = {
+            "inputs": {"row_data": row_data, "csv_row_id": csv_row_id},
+            "generated_output": summary,
+            "metrics": {
+                "combined": float(scalar),
+                "by_grader": grader_scores
+            },
+            "feedback": feedback
+        } if capture_traces else {}
         
-        # GEPA's default reflection prompt (simplified version)
-        meta_prompt = f"""{template_instruction}
-
-Current prompt:
-{current_prompt}
-
-Feedback:
-{feedback_summary}
-
-Generate an improved version of the prompt."""
-        
-        # Call reflection model to generate improved prompt (run async synchronously)
-        reflection_output = _run_async_sync(llm_service.completion(
-            meta_prompt,
-            model=self.reflection_model,
-            temperature=1.0,  # Default temperature for reflection
-            max_completion_tokens=16384  # Default max tokens for reflection
-        ))
-        
-        # Extract and validate the new prompt
-        new_prompt = self._extract_and_validate_prompt(reflection_output, current_prompt)
-        
-        return {"system_prompt": new_prompt}
-    
-    def _extract_and_validate_prompt(self, reflection_output: str, original_prompt: str) -> str:
-        """
-        Extract prompt from reflection output and validate template variables are preserved.
-        
-        Args:
-            reflection_output: Raw output from reflection model
-            original_prompt: Original prompt to extract template variables from
-            
-        Returns:
-            Extracted and validated prompt
-        """
-        import re
-        
-        # Extract the new prompt from the reflection output
-        new_prompt = reflection_output.strip()
-        
-        # Remove markdown code blocks if present
-        if new_prompt.startswith("```"):
-            lines = new_prompt.split("\n")
-            if len(lines) > 1:
-                new_prompt = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
-        
-        # Remove quotes if wrapped
-        if (new_prompt.startswith('"') and new_prompt.endswith('"')) or \
-           (new_prompt.startswith("'") and new_prompt.endswith("'")):
-            new_prompt = new_prompt[1:-1]
-        
-        new_prompt = new_prompt.strip()
-        
-        return new_prompt
-    
-    async def _generate_output(self, system_prompt: str, row_data: Dict[str, Any]) -> str:
-        """Generate output using the system prompt and row data"""
-        # Render the prompt template with row data
-        rendered_prompt = llm_service.render_prompt(system_prompt, row_data, self.available_columns)
-        
-        # Generate output
-        output = await llm_service.completion(
-            rendered_prompt,
-            model=self.generator_model,
-            temperature=self.generator_temperature,
-            max_completion_tokens=self.generator_max_tokens
-        )
-        
-        return output.strip()
+        return summary, float(scalar), trajectory, feedback
     
     def evaluate(
         self,
@@ -201,107 +239,63 @@ Generate an improved version of the prompt."""
             EvaluationBatch with scores, outputs, and trajectories
         """
         system_prompt = candidate["system_prompt"]
+        
+        # Update progress: starting evaluation
+        self._evaluation_count += 1
+        update_progress(
+            self.config_id,
+            message=f"Evaluating candidate {self._evaluation_count} on {len(inputs)} examples...",
+            current_iteration=self._evaluation_count
+        )
+        
+        # Evaluate all items (using async batching for efficiency)
+        async def evaluate_all():
+            tasks = [
+                self._evaluate_single_item(item, system_prompt, capture_traces)
+                for item in inputs
+            ]
+            return await asyncio.gather(*tasks)
+        
+        results = self._run_async(evaluate_all())
+        
+        # Unpack results and calculate scores
         scores: List[float] = []
         outputs: List[str] = []
         trajectories: List[Dict[str, Any]] = []
         
-        for item in inputs:
-            row_data = item.get("row_data", {})
-            csv_row_id = item.get("csv_row_id")
+        # Collect feedback for debugging
+        all_feedback = []
+        for idx, (output, score, trajectory, feedback) in enumerate(results):
+            outputs.append(output)
+            scores.append(score)
+            if feedback:
+                all_feedback.append(feedback)
+            if capture_traces and trajectory:
+                trajectories.append(trajectory)
             
-            # 1) Generate output with the candidate prompt
-            try:
-                # Run async method synchronously
-                summary = _run_async_sync(self._generate_output(system_prompt, row_data))
-                outputs.append(summary)
-            except Exception as e:
-                # If generation fails, score as 0
-                outputs.append("")
-                scores.append(0.0)
-                if capture_traces:
-                    trajectories.append({
-                        "inputs": {"row_data": row_data},
-                        "generated_output": "",
-                        "metrics": {"combined": 0.0},
-                        "feedback": f"Generation failed: {str(e)}"
-                    })
-                continue
-            
-            # 2) Grade using judge configs and function eval configs
-            grader_scores: Dict[str, float] = {}
-            all_scores: List[float] = []
-            feedback_parts: List[str] = []
-            
-            # Run judge configs
-            for judge_config in self.judge_configs:
-                try:
-                    row_data_with_output = dict(row_data)
-                    row_data_with_output["Output"] = summary
-                    
-                    complete_prompt = llm_service.build_judge_prompt(
-                        judge_config.prompt,
-                        row_data_with_output,
-                        self.available_columns + ["Output"]
-                    )
-                    
-                    # Run async LLM call synchronously
-                    judge_output = _run_async_sync(llm_service.completion(
-                        complete_prompt,
-                        model=judge_config.model,
-                        temperature=judge_config.temperature,
-                        max_completion_tokens=judge_config.max_tokens
-                    ))
-                    
-                    score = llm_service.parse_judge_score(judge_output)
-                    grader_scores[f"judge_{judge_config.name}"] = score
-                    all_scores.append(score)
-                    feedback_parts.append(f"{judge_config.name}: {score:.3f}")
-                except Exception as e:
-                    score = 0.0
-                    grader_scores[f"judge_{judge_config.name}"] = score
-                    all_scores.append(score)
-                    feedback_parts.append(f"{judge_config.name}: failed ({str(e)})")
-            
-            # Run function eval configs
-            for function_eval_config in self.function_eval_configs:
-                try:
-                    result_dict = run_function_evaluation(
-                        name=function_eval_config.function_name,
-                        row=row_data,
-                        output=summary,
-                        config=function_eval_config.config
-                    )
-                    score = float(result_dict["score"])
-                    grader_scores[f"function_{function_eval_config.name}"] = score
-                    all_scores.append(score)
-                    feedback_parts.append(f"{function_eval_config.name}: {score:.3f}")
-                except Exception as e:
-                    score = 0.0
-                    grader_scores[f"function_{function_eval_config.name}"] = score
-                    all_scores.append(score)
-                    feedback_parts.append(f"{function_eval_config.name}: failed ({str(e)})")
-            
-            # 3) Calculate combined score (average of all scores)
-            if all_scores:
-                scalar = sum(all_scores) / len(all_scores)
-            else:
-                scalar = 0.0
-            
-            scores.append(float(scalar))
-            
-            # 4) Collect feedback
-            feedback = "; ".join(feedback_parts) if feedback_parts else "All graders passed; keep precision and coverage."
-            
-            if capture_traces:
-                trajectories.append({
-                    "inputs": {"row_data": row_data, "csv_row_id": csv_row_id},
-                    "generated_output": summary,
-                    "metrics": {
-                        "combined": float(scalar),
-                        "by_grader": grader_scores
-                    },
-                    "feedback": feedback
-                })
+            # Log first few results for debugging (especially if scores are 0)
+            if idx < 3 or score == 0.0:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"GEPA eval {idx}: score={score:.3f}, output_len={len(output) if output else 0}, feedback={feedback[:150] if feedback else 'None'}")
+        
+        # Update progress with final results
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        
+        # If all scores are 0, include feedback in progress message
+        if avg_score == 0.0 and all_feedback:
+            feedback_summary = "; ".join(all_feedback[:3])  # First 3 feedback items
+            update_progress(
+                self.config_id,
+                current_score=avg_score,
+                message=f"Completed evaluation of {len(inputs)} examples (avg score: {avg_score:.3f}). Issues: {feedback_summary[:200]}..."
+            )
+        else:
+            update_progress(
+                self.config_id,
+                current_score=avg_score,
+                message=f"Completed evaluation of {len(inputs)} examples (avg score: {avg_score:.3f})"
+            )
         
         return EvaluationBatch(scores=scores, outputs=outputs, trajectories=trajectories)
     
@@ -317,14 +311,12 @@ Generate an improved version of the prompt."""
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Build the reflective dataset for GEPA reflection"""
         examples = []
-        
         for traj in (eval_batch.trajectories or []):
             examples.append({
                 "Inputs": traj.get("inputs", {}),
                 "Generated Outputs": traj.get("generated_output", ""),
                 "Feedback": traj.get("feedback", "")
             })
-        
         return {"system_prompt": examples}
 
 
@@ -344,6 +336,18 @@ async def run_gepa(
     Returns:
         Dictionary with best_prompt, new_prompt_id, score, and logs
     """
+    config_id = gepa_config.id
+    
+    # Initialize progress BEFORE doing any work
+    clear_progress(config_id)
+    update_progress(
+        config_id,
+        status="running",
+        current_iteration=0,
+        max_iterations=gepa_config.max_metric_calls,
+        message="Starting GEPA optimization..."
+    )
+    
     # Get CSV file and columns
     csv_file = db.query(CSVFile).filter(CSVFile.id == csv_file_id).first()
     if not csv_file:
@@ -359,7 +363,12 @@ async def run_gepa(
     if not base_prompt:
         raise ValueError(f"Base prompt {gepa_config.base_prompt_id} not found")
     
-    seed_prompt_content = base_prompt.content
+    if not base_prompt.system_prompt:
+        raise ValueError(f"Base prompt {gepa_config.base_prompt_id} has no system_prompt")
+    
+    seed_prompt_content = base_prompt.system_prompt
+    
+    user_message_column = base_prompt.user_message_column
     
     # Get judge configs
     judge_configs = []
@@ -407,6 +416,10 @@ async def run_gepa(
         })
     
     # Create adapter
+    # Handle migration: fallback to old fields if new fields don't exist (for backward compatibility)
+    generator_temp = getattr(gepa_config, 'generator_temperature', None) or getattr(gepa_config, 'temperature', 1.0)
+    generator_tokens = getattr(gepa_config, 'generator_max_tokens', None) or getattr(gepa_config, 'max_completion_tokens', 16384)
+    
     adapter = EvalsBackedAdapter(
         db=db,
         gepa_config=gepa_config,
@@ -415,35 +428,90 @@ async def run_gepa(
         judge_configs=judge_configs,
         function_eval_configs=function_eval_configs,
         generator_model=gepa_config.generator_model,
-        generator_temperature=1.0,
-        generator_max_tokens=2000
+        generator_temperature=generator_temp,
+        generator_max_tokens=generator_tokens,
+        user_message_column=user_message_column
     )
     
-    # Seed candidate
+    # Seed candidate with template preservation instruction if needed
+    # GEPA's default reflection will handle this, but we can add a note to the prompt
     seed_candidate = {"system_prompt": seed_prompt_content}
     
-    # Run GEPA optimization
-    result = gepa.optimize(
-        seed_candidate=seed_candidate,
-        trainset=trainset,
-        valset=valset,
-        adapter=adapter,
-        reflection_lm=gepa_config.reflection_model,
-        max_metric_calls=gepa_config.max_metric_calls,
-        track_best_outputs=True,
-        display_progress_bar=False  # We'll handle progress ourselves
-    )
-    
-    # Get best prompt
-    best_prompt = result.best_candidate.get("system_prompt", "")
-    
-    # Validate that we got a prompt
-    if not best_prompt or not best_prompt.strip():
-        raise ValueError("GEPA optimization did not produce a valid prompt")
-    
-    # Calculate best score from validation set
-    val_batch = adapter.evaluate(valset, result.best_candidate, capture_traces=False)
-    best_score = sum(val_batch.scores) / len(val_batch.scores) if val_batch.scores else 0.0
+    try:
+        update_progress(
+            config_id,
+            message=f"Running optimization (max {gepa_config.max_metric_calls} iterations)..."
+        )
+        
+        # Run GEPA optimization (using GEPA's default reflection)
+        result = gepa.optimize(
+            seed_candidate=seed_candidate,
+            trainset=trainset,
+            valset=valset,
+            adapter=adapter,
+            reflection_lm=gepa_config.reflection_model,
+            max_metric_calls=gepa_config.max_metric_calls,
+            track_best_outputs=True,
+            display_progress_bar=False  # We handle progress ourselves
+        )
+        
+        # Debug: Log what's in the result object and get the optimized prompt
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"GEPA result object type: {type(result)}")
+        logger.info(f"GEPA result attributes: {dir(result)}")
+        
+        # Try to get the best prompt from result.best_candidate
+        # Also check result.candidate as a fallback (current candidate)
+        best_prompt = ""
+        if hasattr(result, 'best_candidate') and result.best_candidate:
+            best_prompt = result.best_candidate.get("system_prompt", "")
+            logger.info(f"Got prompt from result.best_candidate, length: {len(best_prompt)}")
+            logger.info(f"Best candidate preview: {best_prompt[:200] if best_prompt else 'EMPTY'}...")
+        
+        # If best_candidate doesn't have it, try candidate (current/last candidate)
+        if not best_prompt and hasattr(result, 'candidate') and result.candidate:
+            best_prompt = result.candidate.get("system_prompt", "")
+            logger.info(f"Got prompt from result.candidate, length: {len(best_prompt)}")
+            logger.info(f"Candidate preview: {best_prompt[:200] if best_prompt else 'EMPTY'}...")
+        
+        # If still no prompt, log the entire result structure for debugging
+        if not best_prompt:
+            logger.error(f"Could not find system_prompt in result. Result: {result}")
+            logger.error(f"result.best_candidate: {getattr(result, 'best_candidate', 'N/A')}")
+            logger.error(f"result.candidate: {getattr(result, 'candidate', 'N/A')}")
+            raise ValueError("GEPA optimization did not produce a valid prompt - could not find system_prompt in result")
+        
+        # Validate that we got a prompt
+        if not best_prompt or not best_prompt.strip():
+            raise ValueError("GEPA optimization did not produce a valid prompt")
+        
+        # Log comparison with seed prompt for debugging
+        if best_prompt.strip() == seed_prompt_content.strip():
+            logger.warning("GEPA optimization returned the same prompt as the seed. This may indicate the optimization didn't improve the prompt.")
+        else:
+            logger.info(f"GEPA optimization produced a different prompt (seed length: {len(seed_prompt_content)}, optimized length: {len(best_prompt)})")
+            logger.info(f"Seed prompt preview: {seed_prompt_content[:200]}...")
+            logger.info(f"Optimized prompt preview: {best_prompt[:200]}...")
+        
+        update_progress(
+            config_id,
+            message="Calculating final validation score..."
+        )
+        
+        # Calculate best score from validation set
+        val_batch = adapter.evaluate(valset, result.best_candidate, capture_traces=False)
+        best_score = sum(val_batch.scores) / len(val_batch.scores) if val_batch.scores else 0.0
+        
+        update_progress(
+            config_id,
+            best_score=best_score,
+            message=f"Final validation score: {best_score:.3f}"
+        )
+        
+    except Exception as e:
+        set_error(config_id, f"Optimization failed: {str(e)}")
+        raise
     
     # Create new prompt version (base_prompt_id is always required now)
     root_prompt_id = get_root_prompt_id(db, gepa_config.base_prompt_id)
@@ -455,19 +523,68 @@ async def run_gepa(
     
     version = get_next_prompt_version(db, root_prompt_id)
     
+    # Ensure we have the optimized prompt content (use best_prompt from GEPA result)
+    # Do NOT use seed_prompt_content here - we want the optimized version
+    # best_prompt should already be validated and non-empty at this point
+    optimized_content = best_prompt.strip()
+    
+    # Final verification before saving
+    logger.info(f"About to save prompt version {version}. Content length: {len(optimized_content)}")
+    logger.info(f"Content preview (first 300 chars): {optimized_content[:300]}...")
+    
+    # Double-check we're not accidentally using the seed prompt
+    if optimized_content == seed_prompt_content.strip():
+        logger.warning("WARNING: Optimized prompt content matches seed prompt. GEPA may not have optimized the prompt.")
+        logger.warning("This is normal if GEPA found no improvements, but verify this is expected.")
+    
     new_prompt = Prompt(
         name=root_prompt.name,  # Inherit name from root prompt
-        content=best_prompt.strip(),  # Ensure content is trimmed
+        system_prompt=optimized_content,  # Save the optimized system prompt (NOT seed_prompt_content)
+        user_message_column=user_message_column,  # Inherit user message column from base prompt
         csv_file_id=csv_file_id,
         parent_prompt_id=root_prompt_id,
         version=version,
         commit_message=f"GEPA optimized via {gepa_config.name}"
     )
-    db.add(new_prompt)
-    db.commit()
-    db.refresh(new_prompt)
     
+    try:
+        db.add(new_prompt)
+        db.commit()
+        db.refresh(new_prompt)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to save prompt to database: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise ValueError(f"Failed to save optimized prompt to database: {str(e)}")
+    
+    # Verify the content was saved correctly
     new_prompt_id = new_prompt.id
+    saved_prompt = db.query(Prompt).filter(Prompt.id == new_prompt_id).first()
+    if not saved_prompt:
+        logger.error(f"Failed to retrieve saved prompt with id {new_prompt_id}")
+        raise ValueError("Failed to retrieve saved prompt from database")
+    
+    logger.info(f"Saved prompt ID: {new_prompt_id}, Version: {version}")
+    logger.info(f"Saved content length: {len(saved_prompt.system_prompt)}")
+    logger.info(f"Saved content preview (first 300 chars): {saved_prompt.system_prompt[:300]}...")
+    
+    if saved_prompt.system_prompt != optimized_content:
+        logger.error(f"Content mismatch! Expected length: {len(optimized_content)}, Saved length: {len(saved_prompt.system_prompt)}")
+        logger.error(f"Expected preview: {optimized_content[:300]}...")
+        logger.error(f"Saved preview: {saved_prompt.system_prompt[:300]}...")
+        raise ValueError("Failed to save optimized prompt content correctly - content mismatch detected")
+    else:
+        logger.info("✓ Prompt content saved correctly and verified")
+    
+    # Mark as complete
+    set_complete(
+        config_id,
+        best_score,
+        f"Optimization completed. Best score: {best_score:.3f}. Created prompt version {version}.",
+        new_prompt_id=new_prompt_id
+    )
     
     return {
         "best_prompt": best_prompt,

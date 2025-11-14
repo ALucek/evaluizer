@@ -39,7 +39,8 @@ export interface Evaluation {
 export interface Prompt {
   id: number;
   name: string | null;
-  content: string;
+  system_prompt: string;
+  user_message_column: string | null;
   csv_file_id: number | null;
   version: number;
   commit_message: string | null;
@@ -433,7 +434,8 @@ export async function listPromptsGroupedByName(csvFileId?: number): Promise<Reco
 
 export async function createPromptVersion(
   promptId: number,
-  content: string,
+  systemPrompt: string,
+  userMessageColumn?: string | null,
   name?: string,
   commitMessage?: string
 ): Promise<Prompt> {
@@ -444,7 +446,8 @@ export async function createPromptVersion(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content,
+        system_prompt: systemPrompt,
+        user_message_column: userMessageColumn || null,
         name: name || null,
         commit_message: commitMessage || null,
       }),
@@ -490,11 +493,12 @@ export async function getPrompt(promptId: number): Promise<Prompt> {
 }
 
 export async function createPrompt(
-  content: string,
+  systemPrompt: string,
   csvFileId?: number,
   name?: string,
   parentPromptId?: number,
-  commitMessage?: string
+  commitMessage?: string,
+  userMessageColumn?: string | null
 ): Promise<Prompt> {
   try {
     const response = await fetch(`${API_BASE_URL}/prompt/`, {
@@ -503,7 +507,8 @@ export async function createPrompt(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content,
+        system_prompt: systemPrompt,
+        user_message_column: userMessageColumn || null,
         csv_file_id: csvFileId || null,
         name: name || null,
         parent_prompt_id: parentPromptId || null,
@@ -534,15 +539,19 @@ export async function createPrompt(
 
 export async function updatePrompt(
   promptId: number,
-  content?: string,
+  systemPrompt?: string,
+  userMessageColumn?: string | null,
   name?: string,
   csvFileId?: number | null,
   commitMessage?: string
 ): Promise<Prompt> {
   try {
-    const body: { content?: string; name?: string; csv_file_id?: number | null; commit_message?: string } = {};
-    if (content !== undefined) {
-      body.content = content;
+    const body: { system_prompt?: string; user_message_column?: string | null; name?: string; csv_file_id?: number | null; commit_message?: string } = {};
+    if (systemPrompt !== undefined) {
+      body.system_prompt = systemPrompt;
+    }
+    if (userMessageColumn !== undefined) {
+      body.user_message_column = userMessageColumn;
     }
     if (name !== undefined) {
       body.name = name;
@@ -609,16 +618,16 @@ export async function deletePrompt(promptId: number): Promise<void> {
 }
 
 // Legacy function for backward compatibility - creates/updates prompt for a CSV file
-export async function updatePromptForCSV(csvId: number, prompt: string): Promise<CSVFile> {
+export async function updatePromptForCSV(csvId: number, systemPrompt: string, userMessageColumn?: string | null): Promise<CSVFile> {
   // Get existing prompts for this CSV file
   const prompts = await listPrompts(csvId);
   
   if (prompts.length > 0) {
     // Update the first prompt (or you could update all)
-    await updatePrompt(prompts[0].id, prompt);
+    await updatePrompt(prompts[0].id, systemPrompt, userMessageColumn);
   } else {
     // Create a new prompt
-    await createPrompt(prompt, csvId);
+    await createPrompt(systemPrompt, csvId, undefined, undefined, undefined, userMessageColumn);
   }
   
   // Return the CSV file
@@ -631,7 +640,8 @@ export interface RunPromptConfig {
   model: string;
   temperature: number;
   maxTokens: number;
-  promptContent?: string;  // Optional override for prompt content (for unsaved edits)
+  systemPrompt?: string;  // Optional override for system prompt (for unsaved edits)
+  userMessageColumn?: string | null;  // Optional override for user message column (for unsaved edits)
 }
 
 export async function runPrompt(config: RunPromptConfig): Promise<Evaluation> {
@@ -644,9 +654,14 @@ export async function runPrompt(config: RunPromptConfig): Promise<Evaluation> {
       max_tokens: config.maxTokens,
     };
     
-    // Include prompt_content if provided (for unsaved edits)
-    if (config.promptContent !== undefined) {
-      body.prompt_content = config.promptContent;
+    // Include system_prompt if provided (for unsaved edits)
+    if (config.systemPrompt !== undefined) {
+      body.system_prompt = config.systemPrompt;
+    }
+    
+    // Include user_message_column if provided (for unsaved edits)
+    if (config.userMessageColumn !== undefined) {
+      body.user_message_column = config.userMessageColumn;
     }
     
     const response = await fetch(`${API_BASE_URL}/llm/run`, {
@@ -1268,8 +1283,12 @@ export interface GepaConfig {
   base_prompt_id: number;  // Required
   judge_config_ids: number[] | null;
   function_eval_config_ids: number[] | null;
-  reflection_model: string;
-  generator_model: string;
+  generator_model: string;  // Model for generating outputs (the model you're optimizing for)
+  reflection_model: string;  // Model for reflection/meta-prompt
+  generator_temperature: number;
+  generator_max_tokens: number;
+  reflection_temperature: number;
+  reflection_max_tokens: number;
   max_metric_calls: number;
   created_at: string;
   updated_at: string;
@@ -1281,8 +1300,12 @@ export interface CreateGepaConfigPayload {
   base_prompt_id: number;  // Required - must have a prompt to optimize
   judge_config_ids?: number[] | null;
   function_eval_config_ids?: number[] | null;
-  reflection_model?: string;
-  generator_model?: string;
+  generator_model?: string;  // Model for generating outputs
+  reflection_model?: string;  // Model for reflection/meta-prompt (defaults to generator_model if not specified)
+  generator_temperature?: number;
+  generator_max_tokens?: number;
+  reflection_temperature?: number;
+  reflection_max_tokens?: number;
   max_metric_calls?: number;
 }
 
@@ -1291,6 +1314,17 @@ export interface RunGepaResponse {
   new_prompt_id: number;
   score: number;
   logs?: string | null;
+}
+
+export interface GepaProgress {
+  status: 'waiting' | 'running' | 'completed' | 'error';
+  current_iteration: number;
+  max_iterations: number;
+  current_score: number | null;
+  best_score: number | null;
+  message: string;
+  updated_at: string;
+  new_prompt_id?: number | null;
 }
 
 export async function listGepaConfigs(csvFileId: number): Promise<GepaConfig[]> {
@@ -1426,4 +1460,51 @@ export async function runGepa(configId: number): Promise<RunGepaResponse> {
     }
     throw error;
   }
+}
+
+export function subscribeToGepaProgress(
+  configId: number,
+  onProgress: (progress: GepaProgress) => void,
+  onError?: (error: Error) => void,
+  onComplete?: () => void
+): () => void {
+  const eventSource = new EventSource(`${API_BASE_URL}/optimizer/gepa/configs/${configId}/progress`);
+  
+  eventSource.onmessage = (event) => {
+    try {
+      const progress = JSON.parse(event.data) as GepaProgress;
+      
+      if (progress.status === 'closed') {
+        eventSource.close();
+        if (onComplete) onComplete();
+        return;
+      }
+      
+      onProgress(progress);
+      
+      if (progress.status === 'completed' || progress.status === 'error') {
+        eventSource.close();
+        if (onComplete) onComplete();
+      }
+    } catch (error) {
+      if (onError) {
+        onError(error instanceof Error ? error : new Error('Failed to parse progress'));
+      }
+    }
+  };
+  
+  eventSource.onerror = (error) => {
+    // Don't close on first error - EventSource will retry
+    // Only close if the readyState indicates it's closed
+    if (eventSource.readyState === EventSource.CLOSED) {
+      if (onError) {
+        onError(new Error('EventSource connection closed'));
+      }
+    }
+  };
+  
+  // Return cleanup function
+  return () => {
+    eventSource.close();
+  };
 }

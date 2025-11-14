@@ -12,11 +12,11 @@ interface PromptEditorProps {
   prompt: Prompt | null | undefined;
   groupedPrompts: Record<string, Prompt[]>;
   columns: string[];
-  onSave: (prompt: string, createNewVersion: boolean, name?: string, commitMessage?: string) => Promise<void>;
+  onSave: (systemPrompt: string, userMessageColumn: string | null, createNewVersion: boolean, name?: string, commitMessage?: string) => Promise<void>;
   onVersionSelect: (versionId: number) => void;
   onDeletePrompt?: (promptId: number) => Promise<void>;
-  onContentChange?: (content: string) => void; // Callback to notify parent of content changes
-  onAutoSave?: (promptId: number, content: string) => Promise<void>; // Callback for auto-saving
+  onContentChange?: (systemPrompt: string, userMessageColumn: string | null) => void; // Callback to notify parent of content changes
+  onAutoSave?: (promptId: number, systemPrompt: string, userMessageColumn: string | null) => Promise<void>; // Callback for auto-saving
   llmConfig: LLMConfig;
   onLLMConfigChange: (config: LLMConfig) => void;
   onRunAll?: () => Promise<void>;
@@ -28,7 +28,8 @@ interface PromptEditorProps {
 }
 
 export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
-  const [value, setValue] = useState(prompt?.content || '');
+  const [systemPrompt, setSystemPrompt] = useState(prompt?.system_prompt || '');
+  const [userMessageColumn, setUserMessageColumn] = useState<string | null>(prompt?.user_message_column || null);
   const [promptName, setPromptName] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
   const [selectedPromptName, setSelectedPromptName] = useState<string | null>(null);
@@ -39,6 +40,10 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   const [isSaving, setIsSaving] = useState(false);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [localLLMConfig, setLocalLLMConfig] = useState<LLMConfig>(llmConfig);
+  // Local string states for number inputs to allow empty during editing
+  const [tempTemperature, setTempTemperature] = useState<string>('');
+  const [tempMaxTokens, setTempMaxTokens] = useState<string>('');
+  const [tempConcurrency, setTempConcurrency] = useState<string>('');
 
   // Flatten grouped prompts for display
   const promptGroups = Object.entries(groupedPrompts).sort(([a], [b]) => a.localeCompare(b));
@@ -62,11 +67,13 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   }, [prompt, allPromptNames.length]);
 
   useEffect(() => {
-    const newValue = prompt?.content || '';
-    setValue(newValue);
+    const newSystemPrompt = prompt?.system_prompt || '';
+    const newUserMessageColumn = prompt?.user_message_column || null;
+    setSystemPrompt(newSystemPrompt);
+    setUserMessageColumn(newUserMessageColumn);
     // Notify parent of content changes when prompt changes
     if (onContentChange) {
-      onContentChange(newValue);
+      onContentChange(newSystemPrompt, newUserMessageColumn);
     }
     // Only reset prompt name if we're creating a new prompt (no prompt exists)
     if (!prompt) {
@@ -77,7 +84,8 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
       clearTimeout(autoSaveTimeoutRef.current);
       autoSaveTimeoutRef.current = null;
     }
-  }, [prompt, onContentChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt]); // Only depend on prompt, not onContentChange to avoid resetting on every render
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -118,7 +126,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   };
 
   // Check if there are unsaved changes
-  const hasUnsavedChanges = prompt && value !== prompt.content;
+  const currentSystemPrompt = prompt?.system_prompt || '';
+  const currentUserMessageColumn = prompt?.user_message_column || null;
+  const hasUnsavedChanges = prompt && (systemPrompt !== currentSystemPrompt || userMessageColumn !== currentUserMessageColumn);
 
   // Get versions for selected prompt
   const selectedPromptVersions = selectedPromptName && groupedPrompts[selectedPromptName]
@@ -127,24 +137,33 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
   // Validate prompt template in real-time
   const validatePrompt = () => {
-    if (!value.trim()) {
-      return { isValid: false, message: 'Prompt cannot be empty' };
+    if (!systemPrompt.trim()) {
+      return { isValid: false, message: 'System prompt cannot be empty' };
     }
 
-    // Extract all column names from template
-    const columnMatches = value.match(/\{\{([^}]+)\}\}/g) || [];
+    // Extract all column names from system prompt template (optional - columns can be used but not required)
+    const columnMatches = systemPrompt.match(/\{\{([^}]+)\}\}/g) || [];
     const columnNames = columnMatches.map(match => match.replace(/[{}]/g, '').trim());
-    
-    if (columnNames.length === 0) {
-      return { isValid: false, message: 'Prompt must include at least one column variable (e.g., {{column_name}})' };
-    }
 
-    // Check if all referenced columns exist
+    // Check if all referenced columns exist (if any are used)
     const missingColumns = columnNames.filter(col => !columns.includes(col));
     if (missingColumns.length > 0) {
       return { 
         isValid: false, 
-        message: `Invalid columns: ${missingColumns.join(', ')}. Available: ${columns.join(', ')}` 
+        message: `Invalid columns in system prompt: ${missingColumns.join(', ')}. Available: ${columns.join(', ')}` 
+      };
+    }
+
+    // User message column is required
+    if (!userMessageColumn || userMessageColumn.trim() === '') {
+      return { isValid: false, message: 'User message column must be selected' };
+    }
+
+    // Check if user message column exists
+    if (!columns.includes(userMessageColumn)) {
+      return { 
+        isValid: false, 
+        message: `User message column '${userMessageColumn}' not found. Available: ${columns.join(', ')}` 
       };
     }
 
@@ -154,7 +173,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   const validation = validatePrompt();
 
   // Auto-save function with debouncing
-  const debouncedAutoSave = useCallback((content: string) => {
+  const debouncedAutoSave = useCallback((systemPrompt: string, userMessageColumn: string | null) => {
     // Clear existing timeout
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
@@ -164,7 +183,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     if (prompt && onAutoSave) {
       autoSaveTimeoutRef.current = setTimeout(async () => {
         try {
-          await onAutoSave(prompt.id, content);
+          await onAutoSave(prompt.id, systemPrompt, userMessageColumn);
         } catch (err) {
           console.error('Auto-save failed:', err);
           // Don't show error to user for auto-save failures
@@ -173,15 +192,26 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     }
   }, [prompt, onAutoSave]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleSystemPromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
-    setValue(newValue);
+    setSystemPrompt(newValue);
     // Notify parent of content changes
     if (onContentChange) {
-      onContentChange(newValue);
+      onContentChange(newValue, userMessageColumn);
     }
     // Trigger auto-save with debouncing
-    debouncedAutoSave(newValue);
+    debouncedAutoSave(newValue, userMessageColumn);
+  };
+
+  const handleUserMessageColumnChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = e.target.value === '' ? null : e.target.value;
+    setUserMessageColumn(newValue);
+    // Notify parent of content changes
+    if (onContentChange) {
+      onContentChange(systemPrompt, newValue);
+    }
+    // Trigger auto-save with debouncing
+    debouncedAutoSave(systemPrompt, newValue);
   };
 
   const handleSave = async (createNewVersion: boolean) => {
@@ -199,7 +229,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
       const commitMsg = !isCreatingNewPrompt && prompt ? commitMessage.trim() || undefined : undefined;
       
       // Pass a flag to indicate we're creating a new prompt (not a version)
-      await onSave(value, isCreatingNewPrompt ? false : createNewVersion, name, commitMsg);
+      await onSave(systemPrompt, userMessageColumn, isCreatingNewPrompt ? false : createNewVersion, name, commitMsg);
       setCommitMessage('');
       setPromptName('');
       setShowNewPromptForm(false);
@@ -217,9 +247,13 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const variable = `{{${columnName}}}`;
-    const newValue = value.substring(0, start) + variable + value.substring(end);
+    const newValue = systemPrompt.substring(0, start) + variable + systemPrompt.substring(end);
     
-    setValue(newValue);
+    setSystemPrompt(newValue);
+    // Notify parent of content changes
+    if (onContentChange) {
+      onContentChange(newValue, userMessageColumn);
+    }
 
     setTimeout(() => {
       if (textarea) {
@@ -252,9 +286,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         gap: '1rem',
       }}>
       <div>
-        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROMPT</h2>
+        <h2 style={{ marginTop: 0, marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>SYSTEM PROMPT</h2>
         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-          USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO INSERT COLUMN VALUES
+          USE <code style={{ backgroundColor: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '0', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: '700' }}>{'{{COLUMN_NAME}}'}</code> TO INSERT COLUMN VALUES (OPTIONAL)
         </p>
       </div>
 
@@ -303,9 +337,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
       <textarea
         ref={textareaRef}
-        value={value}
-        onChange={handleChange}
-        placeholder="ENTER YOUR PROMPT TEMPLATE HERE...&#10;EXAMPLE: ANALYZE THE FOLLOWING: {{QUESTION}}"
+        value={systemPrompt}
+        onChange={handleSystemPromptChange}
+        placeholder="ENTER YOUR SYSTEM PROMPT HERE...&#10;EXAMPLE: You are a helpful assistant. Use the following context: {{CONTEXT}}"
         style={{
           width: '100%',
           minHeight: '200px',
@@ -330,6 +364,47 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
           e.currentTarget.style.borderColor = 'var(--border-primary)';
         }}
       />
+
+      {/* User Message Column Selector */}
+      <div>
+        <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          USER MESSAGE COLUMN:
+        </div>
+        <select
+          value={userMessageColumn || ''}
+          onChange={handleUserMessageColumnChange}
+          disabled={isRunning || columns.length === 0}
+          style={{
+            width: '100%',
+            padding: '0.5rem 0.75rem',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '0',
+            fontSize: '0.8125rem',
+            backgroundColor: (isRunning || columns.length === 0) ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+            color: 'var(--text-primary)',
+            fontFamily: 'monospace',
+            fontWeight: '600',
+            cursor: (isRunning || columns.length === 0) ? 'not-allowed' : 'pointer',
+            boxSizing: 'border-box',
+            transition: 'none',
+          }}
+          onFocus={(e) => {
+            if (!isRunning && columns.length > 0) {
+              e.currentTarget.style.borderColor = 'var(--accent-primary)';
+            }
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = 'var(--border-primary)';
+          }}
+        >
+          <option value="">-- SELECT COLUMN --</option>
+          {columns.map((col) => (
+            <option key={col} value={col}>
+              {col}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Save Button - Above Run All */}
       {(!prompt || showNewPromptForm) && (
@@ -721,13 +796,26 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   min="0"
                   max="1"
                   step="0.1"
-                  value={localLLMConfig.temperature}
+                  value={tempTemperature !== '' ? tempTemperature : localLLMConfig.temperature}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0 && val <= 1) {
-                      handleTemperatureChange(val);
+                    const val = e.target.value;
+                    setTempTemperature(val);
+                    const numVal = parseFloat(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 0 && numVal <= 1) {
+                      handleTemperatureChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localLLMConfig.temperature.toString() : e.target.value;
+                    const numVal = parseFloat(val);
+                    if (isNaN(numVal) || numVal < 0 || numVal > 1) {
+                      setTempTemperature('');
+                    } else {
+                      setTempTemperature('');
+                      handleTemperatureChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempTemperature(localLLMConfig.temperature.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',
@@ -791,13 +879,26 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   type="number"
                   min="1"
                   max="16384"
-                  value={localLLMConfig.maxTokens}
+                  value={tempMaxTokens !== '' ? tempMaxTokens : localLLMConfig.maxTokens}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    if (!isNaN(val) && val >= 1 && val <= 16384) {
-                      handleMaxTokensChange(val);
+                    const val = e.target.value;
+                    setTempMaxTokens(val);
+                    const numVal = parseInt(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 1 && numVal <= 16384) {
+                      handleMaxTokensChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localLLMConfig.maxTokens.toString() : e.target.value;
+                    const numVal = parseInt(val);
+                    if (isNaN(numVal) || numVal < 1 || numVal > 16384) {
+                      setTempMaxTokens('');
+                    } else {
+                      setTempMaxTokens('');
+                      handleMaxTokensChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempMaxTokens(localLLMConfig.maxTokens.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',
@@ -862,13 +963,26 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   min="1"
                   max="50"
                   step="1"
-                  value={localLLMConfig.concurrency}
+                  value={tempConcurrency !== '' ? tempConcurrency : localLLMConfig.concurrency}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    if (!isNaN(val) && val >= 1 && val <= 50) {
-                      handleConcurrencyChange(val);
+                    const val = e.target.value;
+                    setTempConcurrency(val);
+                    const numVal = parseInt(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 1 && numVal <= 50) {
+                      handleConcurrencyChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localLLMConfig.concurrency.toString() : e.target.value;
+                    const numVal = parseInt(val);
+                    if (isNaN(numVal) || numVal < 1 || numVal > 50) {
+                      setTempConcurrency('');
+                    } else {
+                      setTempConcurrency('');
+                      handleConcurrencyChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempConcurrency(localLLMConfig.concurrency.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',
@@ -1288,3 +1402,4 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     </>
   );
 }
+

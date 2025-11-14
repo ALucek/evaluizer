@@ -1067,7 +1067,7 @@ export default function DataTable({
                 CLEAR
               </button>
             )}
-          {currentPrompt && llmConfig && currentPrompt.content && (
+          {currentPrompt && llmConfig && currentPrompt.system_prompt && (
             <button
               onClick={(e) => handleRunRow(rowId, e)}
                 disabled={isRowRunning || isRunningAll}

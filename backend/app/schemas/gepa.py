@@ -12,8 +12,12 @@ class GepaConfigResponse(BaseModel):
     base_prompt_id: int  # Required
     judge_config_ids: Optional[List[int]] = None
     function_eval_config_ids: Optional[List[int]] = None
-    reflection_model: str
-    generator_model: str
+    generator_model: str  # Model for generating outputs (the model you're optimizing for)
+    reflection_model: str  # Model for reflection/meta-prompt
+    generator_temperature: float
+    generator_max_tokens: int
+    reflection_temperature: float
+    reflection_max_tokens: int
     max_metric_calls: int
     created_at: datetime
     updated_at: datetime
@@ -29,8 +33,12 @@ class CreateGepaConfigRequest(BaseModel):
     base_prompt_id: int  # Required - must have a prompt to optimize
     judge_config_ids: Optional[List[int]] = None
     function_eval_config_ids: Optional[List[int]] = None
-    reflection_model: str = "gpt-5"
-    generator_model: str = "gpt-5"
+    generator_model: str = "gpt-5"  # Model for generating outputs (the model you're optimizing for)
+    reflection_model: Optional[str] = None  # Model for reflection/meta-prompt (defaults to generator_model if not specified)
+    generator_temperature: float = 1.0
+    generator_max_tokens: int = 16384
+    reflection_temperature: float = 1.0
+    reflection_max_tokens: int = 16384
     max_metric_calls: int = 10
     
     @field_validator('name')
@@ -54,8 +62,12 @@ class UpdateGepaConfigRequest(BaseModel):
     base_prompt_id: Optional[int] = None  # Can update to a different prompt
     judge_config_ids: Optional[List[int]] = None
     function_eval_config_ids: Optional[List[int]] = None
-    reflection_model: Optional[str] = None
-    generator_model: Optional[str] = None
+    generator_model: Optional[str] = None  # Model for generating outputs
+    reflection_model: Optional[str] = None  # Model for reflection/meta-prompt
+    generator_temperature: Optional[float] = None
+    generator_max_tokens: Optional[int] = None
+    reflection_temperature: Optional[float] = None
+    reflection_max_tokens: Optional[int] = None
     max_metric_calls: Optional[int] = None
     
     @field_validator('name')

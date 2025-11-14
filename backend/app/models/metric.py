@@ -14,8 +14,8 @@ class Metric(Base):
     metric_type = Column(String, nullable=False)  # 'human_annotation', 'judge', 'function_eval'
     config_id = Column(Integer, nullable=True)  # For judge/function_eval metrics, the config ID. Null for human_annotation
     threshold = Column(Float, nullable=False)  # The threshold value
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # Unique constraint: one metric per type/config per CSV file
     __table_args__ = (

@@ -15,8 +15,8 @@ class Evaluation(Base):
     output = Column(Text, nullable=True)  # Generated output text
     annotation = Column(Integer, nullable=True)  # 1 for thumbs up, 0 for thumbs down, None for null
     feedback = Column(Text, nullable=True)  # User feedback text
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     csv_file = relationship("CSVFile", back_populates="evaluations")
     csv_row = relationship("CSVRow", back_populates="evaluation")

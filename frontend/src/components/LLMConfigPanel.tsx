@@ -30,6 +30,10 @@ export default function LLMConfigPanel({
 }: LLMConfigPanelProps) {
   const [localConfig, setLocalConfig] = useState<LLMConfig>(config);
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(true);
+  // Local string states for number inputs to allow empty during editing
+  const [tempTemperature, setTempTemperature] = useState<string>('');
+  const [tempMaxTokens, setTempMaxTokens] = useState<string>('');
+  const [tempConcurrency, setTempConcurrency] = useState<string>('');
 
   // Sync localConfig when config prop changes
   useEffect(() => {
@@ -184,13 +188,26 @@ export default function LLMConfigPanel({
                   min="0"
                   max="1"
                   step="0.1"
-                  value={localConfig.temperature}
+                  value={tempTemperature !== '' ? tempTemperature : localConfig.temperature}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0 && val <= 1) {
-                      handleTemperatureChange(val);
+                    const val = e.target.value;
+                    setTempTemperature(val);
+                    const numVal = parseFloat(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 0 && numVal <= 1) {
+                      handleTemperatureChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localConfig.temperature.toString() : e.target.value;
+                    const numVal = parseFloat(val);
+                    if (isNaN(numVal) || numVal < 0 || numVal > 1) {
+                      setTempTemperature('');
+                    } else {
+                      setTempTemperature('');
+                      handleTemperatureChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempTemperature(localConfig.temperature.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',
@@ -252,13 +269,26 @@ export default function LLMConfigPanel({
                   type="number"
                   min="1"
                   max="16384"
-                  value={localConfig.maxTokens}
+                  value={tempMaxTokens !== '' ? tempMaxTokens : localConfig.maxTokens}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    if (!isNaN(val) && val >= 1 && val <= 16384) {
-                      handleMaxTokensChange(val);
+                    const val = e.target.value;
+                    setTempMaxTokens(val);
+                    const numVal = parseInt(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 1 && numVal <= 16384) {
+                      handleMaxTokensChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localConfig.maxTokens.toString() : e.target.value;
+                    const numVal = parseInt(val);
+                    if (isNaN(numVal) || numVal < 1 || numVal > 16384) {
+                      setTempMaxTokens('');
+                    } else {
+                      setTempMaxTokens('');
+                      handleMaxTokensChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempMaxTokens(localConfig.maxTokens.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',
@@ -321,13 +351,26 @@ export default function LLMConfigPanel({
                   min="1"
                   max="50"
                   step="1"
-                  value={localConfig.concurrency}
+                  value={tempConcurrency !== '' ? tempConcurrency : localConfig.concurrency}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    if (!isNaN(val) && val >= 1 && val <= 50) {
-                      handleConcurrencyChange(val);
+                    const val = e.target.value;
+                    setTempConcurrency(val);
+                    const numVal = parseInt(val);
+                    if (val !== '' && !isNaN(numVal) && numVal >= 1 && numVal <= 50) {
+                      handleConcurrencyChange(numVal);
                     }
                   }}
+                  onBlur={(e) => {
+                    const val = e.target.value === '' ? localConfig.concurrency.toString() : e.target.value;
+                    const numVal = parseInt(val);
+                    if (isNaN(numVal) || numVal < 1 || numVal > 50) {
+                      setTempConcurrency('');
+                    } else {
+                      setTempConcurrency('');
+                      handleConcurrencyChange(numVal);
+                    }
+                  }}
+                  onFocus={() => setTempConcurrency(localConfig.concurrency.toString())}
                   disabled={isRunning}
                   style={{
                     width: '90px',

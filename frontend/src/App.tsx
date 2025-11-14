@@ -12,7 +12,8 @@ function App() {
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
   const [csvData, setCsvData] = useState<CSVDataWithRows | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
-  const [currentPromptContent, setCurrentPromptContent] = useState<string>(''); // Track current edited content
+  const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string>(''); // Track current edited system prompt
+  const [currentUserMessageColumn, setCurrentUserMessageColumn] = useState<string | null>(null); // Track current edited user message column
   const [promptVersions, setPromptVersions] = useState<Prompt[]>([]);
   const [groupedPrompts, setGroupedPrompts] = useState<Record<string, Prompt[]>>({});
   const [loading, setLoading] = useState(false);
@@ -325,7 +326,7 @@ function App() {
     }
   };
 
-  const handleSavePrompt = async (prompt: string, createNewVersion: boolean, name?: string, commitMessage?: string) => {
+  const handleSavePrompt = async (systemPrompt: string, userMessageColumn: string | null, createNewVersion: boolean, name?: string, commitMessage?: string) => {
     if (!selectedFileId) return;
     try {
       setError(null);
@@ -334,19 +335,19 @@ function App() {
       // Otherwise, if currentPrompt exists, we're creating a new version (commit)
       if (name && name.trim()) {
         // Create a new root prompt (new branch) - don't pass parent_prompt_id
-        const created = await createPrompt(prompt, selectedFileId, name);
+        const created = await createPrompt(systemPrompt, selectedFileId, name, undefined, undefined, userMessageColumn);
         setCurrentPrompt(created);
         await loadPromptVersions(created.id);
         await loadGroupedPrompts(selectedFileId);
       } else if (currentPrompt) {
         // When a prompt exists, create a new version (commit)
-        const newVersion = await createPromptVersion(currentPrompt.id, prompt, undefined, commitMessage);
+        const newVersion = await createPromptVersion(currentPrompt.id, systemPrompt, userMessageColumn, undefined, commitMessage);
         setCurrentPrompt(newVersion);
         await loadPromptVersions(newVersion.id);
         await loadGroupedPrompts(selectedFileId);
       } else {
         // Fallback: create a new prompt without a name (will be "Unnamed")
-        const created = await createPrompt(prompt, selectedFileId, name);
+        const created = await createPrompt(systemPrompt, selectedFileId, name, undefined, undefined, userMessageColumn);
         setCurrentPrompt(created);
         await loadPromptVersions(created.id);
         await loadGroupedPrompts(selectedFileId);
@@ -378,17 +379,17 @@ function App() {
     try {
       const selectedVersion = await getPrompt(versionId);
       setCurrentPrompt(selectedVersion);
-      // currentPromptContent will be synced by PromptEditor's onContentChange callback
-      // when the prompt prop changes and the textarea updates
+      // currentSystemPrompt and currentUserMessageColumn will be synced by PromptEditor's onContentChange callback
+      // when the prompt prop changes and the textarea/select updates
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load prompt version');
     }
   };
 
-  const handleAutoSave = async (promptId: number, content: string) => {
+  const handleAutoSave = async (promptId: number, systemPrompt: string, userMessageColumn: string | null) => {
     try {
       // Update the prompt content in the database without creating a new version
-      const updated = await updatePromptAPI(promptId, content);
+      const updated = await updatePromptAPI(promptId, systemPrompt, userMessageColumn);
       // Update currentPrompt to reflect the saved content
       if (currentPrompt?.id === promptId) {
         setCurrentPrompt(updated);
@@ -398,6 +399,11 @@ function App() {
       // Don't throw - auto-save failures should be silent
     }
   };
+
+  const handlePromptContentChange = useCallback((systemPrompt: string, userMessageColumn: string | null) => {
+    setCurrentSystemPrompt(systemPrompt);
+    setCurrentUserMessageColumn(userMessageColumn);
+  }, []);
 
   const handleDeletePrompt = async (promptId: number) => {
     if (!selectedFileId) return;
@@ -450,9 +456,10 @@ function App() {
       return; // Validation prevents this, but guard anyway
     }
     
-    // Use currentPromptContent which tracks the textarea value (source of truth)
-    // Falls back to saved prompt content if textarea hasn't been synced yet
-    const promptContentToUse = currentPromptContent || currentPrompt.content;
+    // Use currentSystemPrompt and currentUserMessageColumn which track the editor values (source of truth)
+    // Falls back to saved prompt values if editor hasn't been synced yet
+    const systemPromptToUse = currentSystemPrompt || currentPrompt.system_prompt || '';
+    const userMessageColumnToUse = currentUserMessageColumn !== null ? currentUserMessageColumn : currentPrompt.user_message_column;
 
     const isAllRows = clearOutputsFirst && rowIds.length === csvData.rows.length;
     
@@ -516,7 +523,8 @@ function App() {
               model: llmConfig.model,
               temperature: llmConfig.temperature,
               maxTokens: llmConfig.maxTokens,
-              promptContent: promptContentToUse, // Pass current edited content
+              systemPrompt: systemPromptToUse, // Pass current edited system prompt
+              userMessageColumn: userMessageColumnToUse, // Pass current edited user message column
             });
             
             // Use startTransition to mark this as a non-urgent update, preventing flickering
@@ -572,7 +580,38 @@ function App() {
       return;
     }
     
+    if (!selectedFileId) {
+      return;
+    }
+    
     const allRowIds = csvData.rows.map(row => row.id);
+    
+    // Clear all judge evaluation scores for all rows before running
+    if (judgeConfigs.length > 0) {
+      await Promise.allSettled(
+        judgeConfigs.map(config => 
+          deleteJudgeResultsForConfig(config.id).catch((err: any) => {
+            console.error(`Error clearing judge results for config ${config.id}:`, err);
+          })
+        )
+      );
+      // Reload judge results to update UI
+      await loadJudgeResults(selectedFileId);
+    }
+    
+    // Clear all function evaluation scores for all rows before running
+    if (functionEvalConfigs.length > 0) {
+      await Promise.allSettled(
+        functionEvalConfigs.map(config => 
+          deleteFunctionEvalResultsForConfig(config.id).catch((err: any) => {
+            console.error(`Error clearing function eval results for config ${config.id}:`, err);
+          })
+        )
+      );
+      // Reload function eval results to update UI
+      await loadFunctionEvalResults(selectedFileId);
+    }
+    
     await handleRunPrompt(allRowIds, true);
   };
 
@@ -1088,7 +1127,7 @@ function App() {
                 onSave={handleSavePrompt}
                 onVersionSelect={handleVersionSelect}
                 onDeletePrompt={handleDeletePrompt}
-                onContentChange={setCurrentPromptContent}
+                onContentChange={handlePromptContentChange}
                 onAutoSave={handleAutoSave}
                 llmConfig={llmConfig}
                 onLLMConfigChange={setLlmConfig}

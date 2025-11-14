@@ -11,7 +11,7 @@ class CSVFile(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=datetime.now)
     columns = Column(Text, nullable=False)  # JSON string of column names (original columns only)
     
     rows = relationship("CSVRow", back_populates="csv_file", cascade="all, delete-orphan")
