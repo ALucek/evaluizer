@@ -27,7 +27,6 @@ interface CombinedEvaluationsPanelProps {
   onClearFunctionEvalForAllRows?: (configId: number) => Promise<void>;
 }
 
-type EvaluationType = 'judge' | 'function';
 type SelectedEvaluation = 
   | { type: 'judge'; id: number }
   | { type: 'function'; id: number }
@@ -37,8 +36,8 @@ export default function CombinedEvaluationsPanel({
   csvFileId,
   judgeConfigs,
   functionEvalConfigs,
-  onJudgeConfigsChange,
-  onFunctionEvalConfigsChange,
+  onJudgeConfigsChange: _onJudgeConfigsChange,
+  onFunctionEvalConfigsChange: _onFunctionEvalConfigsChange,
   columns,
   onRunJudgeForAllRows,
   onClearJudgeForAllRows,
@@ -50,7 +49,7 @@ export default function CombinedEvaluationsPanel({
   onCancelJudge,
   isCancellingJudge = false,
   onCreateFunctionEvalConfig,
-  onUpdateFunctionEvalConfig,
+  onUpdateFunctionEvalConfig: _onUpdateFunctionEvalConfig,
   onDeleteFunctionEvalConfig,
   onRunFunctionEvalForAllRows,
   onClearFunctionEvalForAllRows,
@@ -62,8 +61,8 @@ export default function CombinedEvaluationsPanel({
   const [isLLMConfigExpanded, setIsLLMConfigExpanded] = useState(false);
   const [isConcurrencyExpanded, setIsConcurrencyExpanded] = useState(false);
   const [localLLMConfig, setLocalLLMConfig] = useState<LLMConfig>({
-    model: 'gpt-5',
-    temperature: 0.0,
+    model: 'gpt-5-mini',
+    temperature: 1,
     maxTokens: 500,
     concurrency: 10,
   });
@@ -72,7 +71,7 @@ export default function CombinedEvaluationsPanel({
   const judgeEditorRef = useRef<HTMLDivElement>(null);
   const functionEditorRef = useRef<HTMLDivElement>(null);
   const [isSavingJudge, setIsSavingJudge] = useState(false);
-  const judgeAutoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const judgeAutoSaveTimeoutRef = useRef<number | null>(null);
   const previousJudgeConfigIdRef = useRef<number | null>(null);
   const previousShowNewJudgeFormRef = useRef<boolean>(false);
 
@@ -82,6 +81,13 @@ export default function CombinedEvaluationsPanel({
   const [selectedFunctionName, setSelectedFunctionName] = useState<string>('');
   const [isSavingFunction, setIsSavingFunction] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFunctionLLMConfigExpanded, setIsFunctionLLMConfigExpanded] = useState(false);
+  const [functionLLMConfig, setFunctionLLMConfig] = useState<LLMConfig>({
+    model: 'gpt-5-mini',
+    temperature: 1,
+    maxTokens: 500,
+    concurrency: 10,
+  });
 
   // Combined selection state
   const [selectedEvaluation, setSelectedEvaluation] = useState<SelectedEvaluation>(null);
@@ -89,9 +95,6 @@ export default function CombinedEvaluationsPanel({
   // Get selected configs
   const selectedJudgeConfig = selectedEvaluation?.type === 'judge' 
     ? judgeConfigs.find(c => c.id === selectedEvaluation.id) 
-    : null;
-  const selectedFunctionConfig = selectedEvaluation?.type === 'function'
-    ? functionEvalConfigs.find(c => c.id === selectedEvaluation.id)
     : null;
 
   // Load available functions
@@ -136,8 +139,8 @@ export default function CombinedEvaluationsPanel({
         setJudgePrompt('');
         setJudgeName('');
         setLocalLLMConfig({
-          model: 'gpt-5',
-          temperature: 0.0,
+          model: 'gpt-5-mini',
+          temperature: 1,
           maxTokens: 500,
           concurrency: 10,
         });
@@ -339,13 +342,36 @@ export default function CombinedEvaluationsPanel({
     }
   };
 
+  const handleFunctionModelChange = (model: string) => {
+    setFunctionLLMConfig(prev => ({ ...prev, model }));
+  };
+
+  const handleFunctionTemperatureChange = (temperature: number) => {
+    setFunctionLLMConfig(prev => ({ ...prev, temperature }));
+  };
+
+  const handleFunctionMaxTokensChange = (maxTokens: number) => {
+    setFunctionLLMConfig(prev => ({ ...prev, maxTokens }));
+  };
+
   const handleCreateFunction = async () => {
     if (!selectedFunctionName || !csvFileId || !onCreateFunctionEvalConfig) return;
     setIsSavingFunction(true);
     try {
-      await onCreateFunctionEvalConfig(selectedFunctionName);
+      await onCreateFunctionEvalConfig(selectedFunctionName, {
+        model: functionLLMConfig.model,
+        temperature: functionLLMConfig.temperature,
+        max_tokens: functionLLMConfig.maxTokens,
+      });
       setShowNewFunctionForm(false);
       setSelectedFunctionName('');
+      setFunctionLLMConfig({
+        model: 'gpt-5-mini',
+        temperature: 1,
+        maxTokens: 500,
+        concurrency: 10,
+      });
+      setIsFunctionLLMConfigExpanded(false);
     } catch (err) {
       console.error('Failed to create function eval config:', err);
     } finally {
@@ -400,14 +426,6 @@ export default function CombinedEvaluationsPanel({
       setIsLLMConfigExpanded(false);
     }
   };
-
-  const hasUnsavedChanges = selectedJudgeConfig && (
-    judgeName.trim() !== selectedJudgeConfig.name ||
-    judgePrompt !== selectedJudgeConfig.prompt ||
-    localLLMConfig.model !== selectedJudgeConfig.model ||
-    localLLMConfig.temperature !== selectedJudgeConfig.temperature ||
-    localLLMConfig.maxTokens !== selectedJudgeConfig.max_tokens
-  );
 
   return (
     <div style={{
@@ -866,8 +884,8 @@ export default function CombinedEvaluationsPanel({
 
           {/* Columns */}
           {columns.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 AVAILABLE COLUMNS:
               </div>
               <div style={{
@@ -1370,6 +1388,253 @@ export default function CombinedEvaluationsPanel({
             </select>
           </div>
 
+          {/* Available Columns */}
+          {columns.length > 0 && (
+            <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: '700', marginBottom: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                AVAILABLE COLUMNS:
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.375rem',
+              }}>
+                {columns.map((col) => (
+                  <button
+                    key={col}
+                    type="button"
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      backgroundColor: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: '0',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-primary)',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      transition: 'none',
+                      textTransform: 'uppercase',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                      e.currentTarget.style.outlineOffset = '-2px';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.outline = 'none';
+                    }}
+                  >
+                    {col}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* LLM Configuration Section */}
+          <div style={{
+            borderRadius: '0',
+            paddingRight: '-5px',
+            backgroundColor: 'var(--bg-elevated)',
+            overflow: 'hidden',
+          }}>
+            <div
+              onClick={() => setIsFunctionLLMConfigExpanded(!isFunctionLLMConfigExpanded)}
+              style={{
+                paddingTop: '0.5rem',
+                paddingBottom: '0.5rem',
+                paddingLeft: '1rem',
+                paddingRight: '1rem',
+                backgroundColor: 'var(--bg-tertiary)',
+                borderBottom: isFunctionLLMConfigExpanded ? '1px solid var(--border-primary)' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                userSelect: 'none',
+                boxSizing: 'border-box',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                e.currentTarget.style.outlineOffset = '-2px';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.outline = 'none';
+              }}
+            >
+              <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                LLM CONFIGURATION
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                {isFunctionLLMConfigExpanded ? 'v' : '>'}
+              </span>
+            </div>
+            
+            {isFunctionLLMConfigExpanded && (
+              <div style={{ paddingTop: '1rem', paddingBottom: '1rem', paddingLeft: '1rem', paddingRight: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxSizing: 'border-box' }}>
+                {/* Model ID Input */}
+                <div>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    marginBottom: '0.375rem',
+                    color: 'var(--text-tertiary)',
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}>
+                    MODEL ID
+                  </label>
+                  <input
+                    type="text"
+                    value={functionLLMConfig.model}
+                    onChange={(e) => handleFunctionModelChange(e.target.value)}
+                    placeholder="E.G., GPT-4, AZURE/GPT-4, GEMINI/GEMINI-PRO, VERTEX_AI/GEMINI-PRO"
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: '0',
+                      fontSize: '0.8125rem',
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '600',
+                      boxSizing: 'border-box',
+                      transition: 'none',
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-primary)';
+                    }}
+                  />
+                  <p style={{
+                    margin: '0.375rem 0 0 0',
+                    fontSize: '0.6875rem',
+                    color: 'var(--text-tertiary)',
+                    fontFamily: 'monospace',
+                  }}>
+                    ENTER ANY LITELLM-SUPPORTED MODEL ID. EXAMPLES: GPT-4, AZURE/YOUR-DEPLOYMENT, GEMINI/GEMINI-PRO
+                  </p>
+                </div>
+
+                {/* Temperature */}
+                <div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}>
+                    <label style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: 'var(--text-secondary)',
+                    }}>
+                      Temperature
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={functionLLMConfig.temperature}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val) && val >= 0 && val <= 1) {
+                          handleFunctionTemperatureChange(val);
+                        }
+                      }}
+                      style={{
+                        width: '90px',
+                        padding: '0.25rem 0.5rem',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '0',
+                        fontSize: '0.8125rem',
+                        backgroundColor: 'var(--bg-secondary)',
+                        textAlign: 'center',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace',
+                        fontWeight: '600',
+                      }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={functionLLMConfig.temperature}
+                    onChange={(e) => handleFunctionTemperatureChange(parseFloat(e.target.value))}
+                    style={{
+                      width: '100%',
+                      height: '4px',
+                      borderRadius: '0',
+                      background: 'var(--bg-tertiary)',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-tertiary)',
+                    marginTop: '0.375rem',
+                  }}>
+                    <span>More focused</span>
+                    <span>More creative</span>
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}>
+                    <label style={{
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      color: 'var(--text-secondary)',
+                    }}>
+                      Max Tokens
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="16384"
+                      value={functionLLMConfig.maxTokens}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val >= 1 && val <= 16384) {
+                          handleFunctionMaxTokensChange(val);
+                        }
+                      }}
+                      style={{
+                        width: '90px',
+                        padding: '0.25rem 0.5rem',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '0',
+                        fontSize: '0.8125rem',
+                        backgroundColor: 'var(--bg-secondary)',
+                        textAlign: 'center',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace',
+                        fontWeight: '600',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={handleCreateFunction}
@@ -1407,6 +1672,13 @@ export default function CombinedEvaluationsPanel({
               onClick={() => {
                 setShowNewFunctionForm(false);
                 setSelectedFunctionName('');
+                setFunctionLLMConfig({
+                  model: 'gpt-5-mini',
+                  temperature: 1,
+                  maxTokens: 500,
+                  concurrency: 10,
+                });
+                setIsFunctionLLMConfigExpanded(false);
               }}
               style={{
                 flex: 1,
