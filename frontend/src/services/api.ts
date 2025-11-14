@@ -71,6 +71,27 @@ export interface JudgeResult {
   updated_at: string;
 }
 
+export interface FunctionEvalConfig {
+  id: number;
+  csv_file_id: number;
+  name: string;
+  function_name: string;
+  config: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FunctionEvalResult {
+  id: number;
+  config_id: number;
+  csv_file_id: number;
+  csv_row_id: number;
+  score: number;
+  details: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Legacy type alias for backward compatibility during migration
 export type CSVData = CSVFile;
 export type CSVDataWithRows = CSVFileWithRows;
@@ -867,6 +888,258 @@ export async function deleteJudgeResultsForConfig(configId: number): Promise<voi
     
     if (!response.ok) {
       let errorMessage = `Failed to delete judge results: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// Function evaluation API functions
+
+export interface FunctionEvaluationInfo {
+  name: string;
+  description: string;
+}
+
+export async function listFunctionEvaluations(): Promise<FunctionEvaluationInfo[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-evaluations/`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch function evaluations: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function listFunctionEvalConfigs(csvFileId: number): Promise<FunctionEvalConfig[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/configs?csv_file_id=${csvFileId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch function eval configs: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function createFunctionEvalConfig(
+  csvFileId: number,
+  name: string,
+  functionName: string,
+  config?: Record<string, any>
+): Promise<FunctionEvalConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/configs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        csv_file_id: csvFileId,
+        name,
+        function_name: functionName,
+        config: config || null,
+      }),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to create function eval config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function updateFunctionEvalConfig(
+  id: number,
+  partial: {
+    name?: string;
+    config?: Record<string, any>;
+  }
+): Promise<FunctionEvalConfig> {
+  try {
+    const body: any = {};
+    if (partial.name !== undefined) body.name = partial.name;
+    if (partial.config !== undefined) body.config = partial.config;
+
+    const response = await fetch(`${API_BASE_URL}/function-eval/configs/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to update function eval config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteFunctionEvalConfig(id: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/configs/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete function eval config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function getFunctionEvalResultsForCSV(csvId: number): Promise<FunctionEvalResult[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/results/csv/${csvId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch function eval results: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function runFunctionEval(configId: number, csvRowId: number): Promise<FunctionEvalResult> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        config_id: configId,
+        csv_row_id: csvRowId,
+      }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Failed to run function eval: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteFunctionEvalResult(configId: number, rowId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/results/config/${configId}/row/${rowId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete function eval result: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteFunctionEvalResultsForConfig(configId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/function-eval/results/config/${configId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete function eval results: ${response.status}`;
       try {
         const errorData = await response.json();
         errorMessage = errorData.detail || errorMessage;

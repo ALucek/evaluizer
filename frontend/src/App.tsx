@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, startTransition } from 'react';
 import CSVFileList from './components/CSVFileList';
 import DataTable from './components/DataTable';
-import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName, JudgeConfig, JudgeResult, listJudgeConfigs, createJudgeConfig, updateJudgeConfig, deleteJudgeConfig, getJudgeResultsForCSV, runJudge, deleteJudgeResult, deleteJudgeResultsForConfig, getEvaluationsForCSV } from './services/api';
+import { CSVData, CSVDataWithRows, listCSVFiles, getCSVData, deleteCSV, dropColumns, renameColumn, updateEvaluation, listPrompts, createPrompt, updatePrompt as updatePromptAPI, Prompt, runPrompt, Evaluation, listPromptVersions, createPromptVersion, getPrompt, deletePrompt, listPromptsGroupedByName, JudgeConfig, JudgeResult, listJudgeConfigs, createJudgeConfig, updateJudgeConfig, deleteJudgeConfig, getJudgeResultsForCSV, runJudge, deleteJudgeResult, deleteJudgeResultsForConfig, getEvaluationsForCSV, FunctionEvalConfig, FunctionEvalResult, listFunctionEvalConfigs, createFunctionEvalConfig, updateFunctionEvalConfig, deleteFunctionEvalConfig, getFunctionEvalResultsForCSV, runFunctionEval, deleteFunctionEvalResult, deleteFunctionEvalResultsForConfig } from './services/api';
 import PromptEditor, { LLMConfig } from './components/PromptEditor';
 import JudgeEvaluationsPanel from './components/JudgeEvaluationsPanel';
+import FunctionEvaluationsPanel from './components/FunctionEvaluationsPanel';
 import './index.css';
 
 function App() {
@@ -37,6 +38,9 @@ function App() {
   const [runningJudgeCells, setRunningJudgeCells] = useState<Set<string>>(new Set());
   const [isCancellingJudge, setIsCancellingJudge] = useState(false);
   const judgeCancellationRef = useRef<boolean>(false);
+  const [functionEvalConfigs, setFunctionEvalConfigs] = useState<FunctionEvalConfig[]>([]);
+  const [functionEvalResults, setFunctionEvalResults] = useState<FunctionEvalResult[]>([]);
+  const [latestFunctionEvalResult, setLatestFunctionEvalResult] = useState<FunctionEvalResult | null>(null);
 
   const loadCSVFiles = async (): Promise<CSVData[]> => {
     try {
@@ -137,6 +141,26 @@ function App() {
     }
   };
 
+  const loadFunctionEvalConfigs = async (csvFileId: number) => {
+    try {
+      const configs = await listFunctionEvalConfigs(csvFileId);
+      setFunctionEvalConfigs(configs);
+    } catch (err) {
+      console.error('Failed to load function eval configs:', err);
+      setFunctionEvalConfigs([]);
+    }
+  };
+
+  const loadFunctionEvalResults = async (csvFileId: number) => {
+    try {
+      const results = await getFunctionEvalResultsForCSV(csvFileId);
+      setFunctionEvalResults(results);
+    } catch (err) {
+      console.error('Failed to load function eval results:', err);
+      setFunctionEvalResults([]);
+    }
+  };
+
   useEffect(() => {
     selectedFileIdRef.current = selectedFileId;
     if (selectedFileId) {
@@ -145,6 +169,8 @@ function App() {
       loadGroupedPrompts(selectedFileId);
       loadJudgeConfigs(selectedFileId);
       loadJudgeResults(selectedFileId);
+      loadFunctionEvalConfigs(selectedFileId);
+      loadFunctionEvalResults(selectedFileId);
     } else {
       setCsvData(null);
       setCurrentPrompt(null);
@@ -152,6 +178,8 @@ function App() {
       setGroupedPrompts({});
       setJudgeConfigs([]);
       setJudgeResults([]);
+      setFunctionEvalConfigs([]);
+      setFunctionEvalResults([]);
     }
   }, [selectedFileId]);
 
@@ -523,6 +551,19 @@ function App() {
         await loadJudgeResults(selectedFileId);
       }
       
+      // Clear all function evaluation scores for all rows
+      if (functionEvalConfigs.length > 0) {
+        await Promise.allSettled(
+          functionEvalConfigs.map(config => 
+            deleteFunctionEvalResultsForConfig(config.id).catch((err: any) => {
+              console.error(`Error clearing function eval results for config ${config.id}:`, err);
+            })
+          )
+        );
+        // Reload function eval results to update UI
+        await loadFunctionEvalResults(selectedFileId);
+      }
+      
       // Reset the flag after a brief moment so it can be reused
       setTimeout(() => {
         setClearAllOutputs(false);
@@ -717,6 +758,130 @@ function App() {
     }
   };
 
+  // Function evaluation handlers
+  const handleCreateFunctionEvalConfig = async (functionName: string, config?: Record<string, any>): Promise<FunctionEvalConfig> => {
+    if (!selectedFileId) {
+      throw new Error('No CSV file selected');
+    }
+    try {
+      setError(null);
+      // Use functionName as the name for the evaluation
+      const created = await createFunctionEvalConfig(selectedFileId, functionName, functionName, config);
+      await loadFunctionEvalConfigs(selectedFileId);
+      return created;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create function eval config');
+      throw err;
+    }
+  };
+
+  const handleUpdateFunctionEvalConfig = async (id: number, partial: { name?: string; config?: Record<string, any> }) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await updateFunctionEvalConfig(id, partial);
+      await loadFunctionEvalConfigs(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update function eval config');
+      throw err;
+    }
+  };
+
+  const handleDeleteFunctionEvalConfig = async (id: number) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await deleteFunctionEvalConfig(id);
+      await loadFunctionEvalConfigs(selectedFileId);
+      await loadFunctionEvalResults(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete function eval config');
+      throw err;
+    }
+  };
+
+  const handleRunFunctionEvalForRow = async (configId: number, rowId: number) => {
+    try {
+      const result = await runFunctionEval(configId, rowId);
+      // Update incrementally as result comes in
+      setLatestFunctionEvalResult(result);
+      setFunctionEvalResults(prev => {
+        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+        return [...next, result];
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run function evaluation');
+    }
+  };
+
+  const handleRunFunctionEvalForAllRows = async (configId: number) => {
+    if (!selectedFileId || !csvData) return;
+    
+    try {
+      setError(null);
+      // Fetch evaluations to check which rows have outputs
+      const evaluations = await getEvaluationsForCSV(selectedFileId);
+      const evaluationsByRowId = new Map<number, Evaluation>();
+      evaluations.forEach(evaluation => {
+        evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
+      });
+
+      // Filter to only rows that have outputs
+      const validRowIds = csvData.rows
+        .filter(row => {
+          const evaluation = evaluationsByRowId.get(row.id);
+          const output = evaluation?.output;
+          return output !== null && output !== undefined && output !== '';
+        })
+        .map(row => row.id);
+
+      if (validRowIds.length === 0) {
+        setError('No rows with outputs found. Run prompts first to generate outputs.');
+        return;
+      }
+
+      // Run for all valid rows sequentially (simple for Phase 2)
+      for (const rowId of validRowIds) {
+        try {
+          const result = await runFunctionEval(configId, rowId);
+          setLatestFunctionEvalResult(result);
+          setFunctionEvalResults(prev => {
+            const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+            return [...next, result];
+          });
+        } catch (err) {
+          console.error(`Error running function eval for row ${rowId}:`, err);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run function evaluations');
+    } finally {
+      setTimeout(() => {
+        setLatestFunctionEvalResult(null);
+      }, 100);
+    }
+  };
+
+  const handleClearFunctionEvalForRow = async (configId: number, rowId: number) => {
+    try {
+      await deleteFunctionEvalResult(configId, rowId);
+      setFunctionEvalResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear function eval result');
+    }
+  };
+
+  const handleClearFunctionEvalForAllRows = async (configId: number) => {
+    if (!selectedFileId) return;
+    try {
+      setError(null);
+      await deleteFunctionEvalResultsForConfig(configId);
+      await loadFunctionEvalResults(selectedFileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear function eval results');
+    }
+  };
+
   const currentColumns = csvData?.columns || [];
 
   return (
@@ -846,6 +1011,18 @@ function App() {
                 onCancelJudge={handleCancelJudge}
                 isCancellingJudge={isCancellingJudge}
               />
+              
+              {/* Function Evaluations Panel */}
+              <FunctionEvaluationsPanel
+                csvFileId={selectedFileId}
+                functionEvalConfigs={functionEvalConfigs}
+                onConfigsChange={setFunctionEvalConfigs}
+                onCreateFunctionEvalConfig={handleCreateFunctionEvalConfig}
+                onUpdateFunctionEvalConfig={handleUpdateFunctionEvalConfig}
+                onDeleteFunctionEvalConfig={handleDeleteFunctionEvalConfig}
+                onRunFunctionEvalForAllRows={handleRunFunctionEvalForAllRows}
+                onClearFunctionEvalForAllRows={handleClearFunctionEvalForAllRows}
+              />
             </>
           ) : (
             <>
@@ -946,6 +1123,11 @@ function App() {
                 isRunningJudge={isRunningJudge}
                 runningJudgeConfigId={runningJudgeConfigId}
                 runningJudgeCells={runningJudgeCells}
+                functionEvalConfigs={functionEvalConfigs}
+                functionEvalResults={functionEvalResults}
+                latestFunctionEvalResult={latestFunctionEvalResult}
+                onRunFunctionEvalForRow={handleRunFunctionEvalForRow}
+                onClearFunctionEvalForRow={handleClearFunctionEvalForRow}
               />
             ) : (
               <div style={{ 
