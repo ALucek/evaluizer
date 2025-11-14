@@ -128,8 +128,8 @@ Generate an improved version of the prompt."""
         reflection_output = _run_async_sync(llm_service.completion(
             meta_prompt,
             model=self.reflection_model,
-            temperature=self.gepa_config.gepa_temperature,
-            max_completion_tokens=self.gepa_config.gepa_max_tokens
+            temperature=1.0,  # Default temperature for reflection
+            max_completion_tokens=16384  # Default max tokens for reflection
         ))
         
         # Extract and validate the new prompt
