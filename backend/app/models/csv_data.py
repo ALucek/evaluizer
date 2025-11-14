@@ -21,6 +21,7 @@ class CSVFile(Base):
     function_eval_configs = relationship("FunctionEvalConfig", back_populates="csv_file", cascade="all, delete-orphan")
     function_eval_results = relationship("FunctionEvalResult", back_populates="csv_file", cascade="all, delete-orphan")
     metrics = relationship("Metric", back_populates="csv_file", cascade="all, delete-orphan")
+    gepa_configs = relationship("GepaConfig", back_populates="csv_file", cascade="all, delete-orphan")
 
 
 class CSVRow(Base):

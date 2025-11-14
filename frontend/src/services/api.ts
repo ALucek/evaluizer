@@ -1258,3 +1258,174 @@ export async function deleteMetric(metricId: number): Promise<void> {
     throw error;
   }
 }
+
+// GEPA Optimizer types and API
+
+export interface GepaConfig {
+  id: number;
+  csv_file_id: number;
+  name: string;
+  base_prompt_id: number;  // Required
+  judge_config_ids: number[] | null;
+  function_eval_config_ids: number[] | null;
+  reflection_model: string;
+  generator_model: string;
+  max_metric_calls: number;
+  custom_meta_prompt: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateGepaConfigPayload {
+  csv_file_id: number;
+  name: string;
+  base_prompt_id: number;  // Required - must have a prompt to optimize
+  judge_config_ids?: number[] | null;
+  function_eval_config_ids?: number[] | null;
+  reflection_model?: string;
+  generator_model?: string;
+  max_metric_calls?: number;
+  custom_meta_prompt?: string | null;
+}
+
+export interface RunGepaResponse {
+  best_prompt: string;
+  new_prompt_id: number;
+  score: number;
+  logs?: string | null;
+}
+
+export async function listGepaConfigs(csvFileId: number): Promise<GepaConfig[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/optimizer/gepa/configs?csv_file_id=${csvFileId}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch GEPA configs: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function createGepaConfig(payload: CreateGepaConfigPayload): Promise<GepaConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/optimizer/gepa/configs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to create GEPA config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function updateGepaConfig(
+  configId: number,
+  payload: Partial<CreateGepaConfigPayload>
+): Promise<GepaConfig> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/optimizer/gepa/configs/${configId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to update GEPA config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function deleteGepaConfig(configId: number): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/optimizer/gepa/configs/${configId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to delete GEPA config: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+export async function runGepa(configId: number): Promise<RunGepaResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/optimizer/gepa/configs/${configId}/run`, {
+      method: 'POST',
+    });
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to run GEPA optimization: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}

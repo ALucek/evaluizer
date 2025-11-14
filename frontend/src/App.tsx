@@ -1111,6 +1111,12 @@ function App() {
                 latestEvaluation={latestEvaluation}
                 latestJudgeResult={latestJudgeResult}
                 latestFunctionEvalResult={latestFunctionEvalResult}
+                prompts={Object.values(groupedPrompts).flat()}
+                onGepaRunComplete={async (newPromptId: number) => {
+                  // Refresh prompts and select the new one
+                  await loadGroupedPrompts(selectedFileId!);
+                  await handleVersionSelect(newPromptId);
+                }}
               />
               
               {/* Combined Evaluations Panel */}

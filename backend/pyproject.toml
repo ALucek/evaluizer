@@ -11,4 +11,5 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pydantic>=2.0.0",
     "litellm>=1.0.0",
+    "gepa>=0.0.22",
 ]
