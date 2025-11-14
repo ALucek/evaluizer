@@ -49,7 +49,6 @@ export default function OptimizerPanel({
     reflection_model: 'gpt-5',
     generator_model: 'gpt-5',
     max_metric_calls: 10,
-    custom_meta_prompt: '',
   });
   const [isSavingGepaConfig, setIsSavingGepaConfig] = useState(false);
 
@@ -292,7 +291,6 @@ export default function OptimizerPanel({
         reflection_model: gepaFormData.reflection_model,
         generator_model: gepaFormData.generator_model,
         max_metric_calls: gepaFormData.max_metric_calls,
-        custom_meta_prompt: gepaFormData.custom_meta_prompt.trim() || null,
       });
       
       // Reload configs
@@ -308,7 +306,6 @@ export default function OptimizerPanel({
         reflection_model: 'gpt-5',
         generator_model: 'gpt-5',
         max_metric_calls: 10,
-        custom_meta_prompt: '',
       });
       setShowGepaForm(false);
     } catch (err) {
@@ -1241,39 +1238,6 @@ export default function OptimizerPanel({
                         backgroundColor: 'var(--bg-secondary)',
                         color: 'var(--text-primary)',
                         boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  
-                  {/* Custom Meta Prompt */}
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '0.75rem',
-                      fontWeight: '700',
-                      color: 'var(--text-secondary)',
-                      fontFamily: 'monospace',
-                      textTransform: 'uppercase',
-                      marginBottom: '0.5rem',
-                    }}>
-                      CUSTOM META PROMPT (OPTIONAL)
-                    </label>
-                    <textarea
-                      value={gepaFormData.custom_meta_prompt}
-                      onChange={(e) => setGepaFormData({ ...gepaFormData, custom_meta_prompt: e.target.value })}
-                      placeholder="Leave empty to use default GEPA meta-prompt. Available placeholders: {current_prompt}, {feedback_summary}, {examples}"
-                      rows={4}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem 0.75rem',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: '0',
-                        fontSize: '0.8125rem',
-                        fontFamily: 'monospace',
-                        backgroundColor: 'var(--bg-secondary)',
-                        color: 'var(--text-primary)',
-                        boxSizing: 'border-box',
-                        resize: 'vertical',
                       }}
                     />
                   </div>

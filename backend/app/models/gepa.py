@@ -27,9 +27,6 @@ class GepaConfig(Base):
     # Optimization budget
     max_metric_calls = Column(Integer, nullable=False, default=10)  # Max number of evaluations
     
-    # Optional custom meta-prompt (if None, use default)
-    custom_meta_prompt = Column(Text, nullable=True)
-    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

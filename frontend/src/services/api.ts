@@ -1271,7 +1271,6 @@ export interface GepaConfig {
   reflection_model: string;
   generator_model: string;
   max_metric_calls: number;
-  custom_meta_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1285,7 +1284,6 @@ export interface CreateGepaConfigPayload {
   reflection_model?: string;
   generator_model?: string;
   max_metric_calls?: number;
-  custom_meta_prompt?: string | null;
 }
 
 export interface RunGepaResponse {

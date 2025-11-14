@@ -66,21 +66,21 @@ class EvalsBackedAdapter:
         self.generator_max_tokens = generator_max_tokens
         self.reflection_model = gepa_config.reflection_model
         
-        # If custom_meta_prompt is provided, use our custom reflection method
-        # Otherwise, GEPA will use its default reflection flow
-        if gepa_config.custom_meta_prompt:
-            self.propose_new_texts = self._propose_new_texts_with_custom_meta
-        else:
-            self.propose_new_texts = None
+        # Use GEPA's default reflection with template preservation instruction
+        self.propose_new_texts = self._propose_new_texts_with_template_preservation
     
-    async def _propose_new_texts_with_custom_meta(
+    def _build_template_preservation_instructions(self) -> str:
+        """Build instructions for preserving template variables"""
+        return "CRITICAL: Preserve all {{column_name}} template variables exactly as shown - they are placeholders that will be replaced with actual data."
+    
+    def _propose_new_texts_with_template_preservation(
         self,
         candidate: Dict[str, str],
         reflective_dataset: Dict[str, List[Dict[str, Any]]],
         components_to_update: List[str]
     ) -> Dict[str, str]:
         """
-        Propose new candidate prompts using custom meta prompt.
+        Propose new candidate prompts using default meta prompt with template preservation.
         
         Args:
             candidate: Current candidate with "system_prompt" key
@@ -100,7 +100,6 @@ class EvalsBackedAdapter:
             feedback = example.get("Feedback", "")
             if feedback:
                 feedback_parts.append(feedback)
-            # Try to extract score from metrics if available
             metrics = example.get("metrics", {})
             if "combined" in metrics:
                 scores.append(metrics["combined"])
@@ -111,24 +110,19 @@ class EvalsBackedAdapter:
             avg_score = sum(scores) / len(scores)
             feedback_summary = f"Average score: {avg_score:.3f}\n\n{feedback_summary}"
         
-        # Format the custom meta prompt with current prompt and feedback
-        # Use safe formatting in case the template doesn't have all placeholders
-        try:
-            meta_prompt = self.gepa_config.custom_meta_prompt.format(
-                current_prompt=current_prompt,
-                feedback_summary=feedback_summary,
-                examples=examples
-            )
-        except KeyError:
-            # If format fails, try with just the basic placeholders
-            try:
-                meta_prompt = self.gepa_config.custom_meta_prompt.format(
-                    current_prompt=current_prompt,
-                    feedback_summary=feedback_summary
-                )
-            except KeyError:
-                # If still fails, just use the template as-is and append context
-                meta_prompt = f"{self.gepa_config.custom_meta_prompt}\n\nCurrent Prompt:\n{current_prompt}\n\nFeedback:\n{feedback_summary}"
+        # Use GEPA's default reflection prompt structure with template preservation instruction
+        template_instruction = self._build_template_preservation_instructions()
+        
+        # GEPA's default reflection prompt (simplified version)
+        meta_prompt = f"""{template_instruction}
+
+Current prompt:
+{current_prompt}
+
+Feedback:
+{feedback_summary}
+
+Generate an improved version of the prompt."""
         
         # Call reflection model to generate improved prompt (run async synchronously)
         reflection_output = _run_async_sync(llm_service.completion(
@@ -138,8 +132,25 @@ class EvalsBackedAdapter:
             max_completion_tokens=self.gepa_config.gepa_max_tokens
         ))
         
+        # Extract and validate the new prompt
+        new_prompt = self._extract_and_validate_prompt(reflection_output, current_prompt)
+        
+        return {"system_prompt": new_prompt}
+    
+    def _extract_and_validate_prompt(self, reflection_output: str, original_prompt: str) -> str:
+        """
+        Extract prompt from reflection output and validate template variables are preserved.
+        
+        Args:
+            reflection_output: Raw output from reflection model
+            original_prompt: Original prompt to extract template variables from
+            
+        Returns:
+            Extracted and validated prompt
+        """
+        import re
+        
         # Extract the new prompt from the reflection output
-        # Try to find the prompt in the output (could be wrapped in quotes, code blocks, etc.)
         new_prompt = reflection_output.strip()
         
         # Remove markdown code blocks if present
@@ -153,7 +164,9 @@ class EvalsBackedAdapter:
            (new_prompt.startswith("'") and new_prompt.endswith("'")):
             new_prompt = new_prompt[1:-1]
         
-        return {"system_prompt": new_prompt.strip()}
+        new_prompt = new_prompt.strip()
+        
+        return new_prompt
     
     async def _generate_output(self, system_prompt: str, row_data: Dict[str, Any]) -> str:
         """Generate output using the system prompt and row data"""

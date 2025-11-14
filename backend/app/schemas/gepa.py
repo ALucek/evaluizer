@@ -15,7 +15,6 @@ class GepaConfigResponse(BaseModel):
     reflection_model: str
     generator_model: str
     max_metric_calls: int
-    custom_meta_prompt: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -33,7 +32,6 @@ class CreateGepaConfigRequest(BaseModel):
     reflection_model: str = "gpt-5"
     generator_model: str = "gpt-5"
     max_metric_calls: int = 10
-    custom_meta_prompt: Optional[str] = None
     
     @field_validator('name')
     @classmethod
@@ -59,7 +57,6 @@ class UpdateGepaConfigRequest(BaseModel):
     reflection_model: Optional[str] = None
     generator_model: Optional[str] = None
     max_metric_calls: Optional[int] = None
-    custom_meta_prompt: Optional[str] = None
     
     @field_validator('name')
     @classmethod

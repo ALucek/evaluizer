@@ -90,8 +90,7 @@ async def create_gepa_config(
             function_eval_config_ids=request.function_eval_config_ids,
             reflection_model=request.reflection_model,
             generator_model=request.generator_model,
-            max_metric_calls=request.max_metric_calls,
-            custom_meta_prompt=request.custom_meta_prompt
+            max_metric_calls=request.max_metric_calls
         )
         
         db.add(config)
@@ -165,8 +164,6 @@ async def update_gepa_config(
         config.generator_model = request.generator_model
     if request.max_metric_calls is not None:
         config.max_metric_calls = request.max_metric_calls
-    if request.custom_meta_prompt is not None:
-        config.custom_meta_prompt = request.custom_meta_prompt
     
     try:
         db.commit()
