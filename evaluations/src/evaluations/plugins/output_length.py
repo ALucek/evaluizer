@@ -12,7 +12,7 @@ class OutputLengthEvaluation(EvaluationPlugin):
     """
     
     name = "output_length"
-    description = "Scores outputs based on their character length (0-1 scale)"
+    description = "Scores outputs based on their character length (0-1 scale), Maximum length is 1000 characters"
     
     def run(self, context: EvaluationContext) -> EvaluationResult:
         """

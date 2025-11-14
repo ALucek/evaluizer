@@ -12,6 +12,7 @@ from app.models.csv_data import CSVFile, CSVRow
 from app.models.evaluation import Evaluation
 from app.models.prompt import Prompt
 from app.models.judge import JudgeConfig, JudgeResult
+from app.models.function_eval import FunctionEvalConfig, FunctionEvalResult
 from app.utils import parse_json_safe, get_or_404
 from app.schemas.csv_data import CSVFileResponse, CSVFileWithRowsResponse, CSVRowResponse, DropColumnsRequest, RenameColumnRequest
 
@@ -265,7 +266,7 @@ async def export_csv_with_evaluations(
     prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> StreamingResponse:
-    """Export CSV file with all evaluation data (output, annotation, feedback) and judge scores, plus prompt as a ZIP file"""
+    """Export CSV file with all evaluation data (output, annotation, feedback), judge scores, and function eval scores, plus prompt as a ZIP file"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     # Get all rows
@@ -292,6 +293,23 @@ async def export_csv_with_evaluations(
             scores_by_row_and_config[result.csv_row_id] = {}
         scores_by_row_and_config[result.csv_row_id][result.config_id] = result.score
     
+    # Get all function eval configs for this CSV file (sorted by creation date, oldest first)
+    function_eval_configs = db.query(FunctionEvalConfig).filter(
+        FunctionEvalConfig.csv_file_id == csv_id
+    ).order_by(FunctionEvalConfig.created_at).all()
+    
+    # Get all function eval results for this CSV file
+    function_eval_results = db.query(FunctionEvalResult).filter(
+        FunctionEvalResult.csv_file_id == csv_id
+    ).all()
+    
+    # Build map of function eval scores by row_id and config_id for quick lookup
+    function_scores_by_row_and_config: dict[int, dict[int, float]] = {}
+    for result in function_eval_results:
+        if result.csv_row_id not in function_scores_by_row_and_config:
+            function_scores_by_row_and_config[result.csv_row_id] = {}
+        function_scores_by_row_and_config[result.csv_row_id][result.config_id] = result.score
+    
     # Get prompt - use provided prompt_id if available, otherwise get first prompt for CSV file
     if prompt_id:
         prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
@@ -303,9 +321,10 @@ async def export_csv_with_evaluations(
     # Get original columns
     original_columns = parse_json_safe(csv_file.columns, [])
     
-    # Build fieldnames: original columns + evaluation columns + judge columns
+    # Build fieldnames: original columns + evaluation columns + judge columns + function eval columns
     judge_column_names = [config.name for config in judge_configs]
-    fieldnames = original_columns + ["Output", "Annotation", "Feedback"] + judge_column_names
+    function_eval_column_names = [config.name for config in function_eval_configs]
+    fieldnames = original_columns + ["Output", "Annotation", "Feedback"] + judge_column_names + function_eval_column_names
     
     # Create CSV with original columns + evaluation columns + judge columns
     csv_output = io.StringIO()
@@ -329,6 +348,12 @@ async def export_csv_with_evaluations(
         row_scores = scores_by_row_and_config.get(row.id, {})
         for config in judge_configs:
             score = row_scores.get(config.id)
+            row_dict[config.name] = f"{score:.2f}" if score is not None else ""
+        
+        # Add function eval scores for each function eval config
+        row_function_scores = function_scores_by_row_and_config.get(row.id, {})
+        for config in function_eval_configs:
+            score = row_function_scores.get(config.id)
             row_dict[config.name] = f"{score:.2f}" if score is not None else ""
         
         writer.writerow(row_dict)
