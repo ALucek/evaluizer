@@ -317,7 +317,7 @@ async def export_csv_with_evaluations(
     else:
         prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
     
-    prompt_content = prompt.content if prompt else ""
+    prompt_content = prompt.system_prompt if prompt else ""
     
     # Get original columns
     original_columns = parse_json_safe(csv_file.columns, [])
