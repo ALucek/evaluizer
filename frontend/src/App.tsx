@@ -18,6 +18,13 @@ function App() {
   const [groupedPrompts, setGroupedPrompts] = useState<Record<string, Prompt[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTimestamp, setErrorTimestamp] = useState<Date | null>(null);
+
+  // Helper function to set error with timestamp
+  const setErrorWithTimestamp = useCallback((errorMessage: string | null) => {
+    setError(errorMessage);
+    setErrorTimestamp(errorMessage ? new Date() : null);
+  }, []);
   const selectedFileIdRef = useRef<number | null>(null);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
     model: 'gpt-5-mini',
@@ -50,7 +57,7 @@ function App() {
       setCsvFiles(files);
       return files;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load CSV files');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to load CSV files');
       return [];
     }
   };
@@ -61,15 +68,15 @@ function App() {
     if (isInitialLoad) {
       setLoading(true);
     }
-    setError(null);
     try {
       const data = await getCSVData(id);
       // Only update if this is still the selected file (prevent race conditions)
       if (selectedFileIdRef.current === id) {
         setCsvData(data);
+        setErrorWithTimestamp(null); // Clear error only on success
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load CSV data');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to load CSV data');
     } finally {
       setLoading(false);
     }
@@ -85,6 +92,17 @@ function App() {
       if (prompts.length > 0) {
         const prompt = prompts[0]; // Use the first prompt for this CSV file
         setCurrentPrompt(prompt);
+        
+        // Load LLM config from the prompt if it exists
+        if (prompt.model || prompt.temperature !== null || prompt.max_tokens !== null || prompt.concurrency !== null) {
+          setLlmConfig({
+            model: prompt.model || llmConfig.model,
+            temperature: prompt.temperature ?? llmConfig.temperature,
+            maxTokens: prompt.max_tokens ?? llmConfig.maxTokens,
+            concurrency: prompt.concurrency ?? llmConfig.concurrency,
+          });
+        }
+        
         // Load versions for this prompt
         await loadPromptVersions(prompt.id);
       } else {
@@ -106,6 +124,16 @@ function App() {
       const currentVersion = versions.find(v => v.id === promptId);
       if (currentVersion) {
         setCurrentPrompt(currentVersion);
+        
+        // Load LLM config from the current version if it exists
+        if (currentVersion.model || currentVersion.temperature !== null || currentVersion.max_tokens !== null || currentVersion.concurrency !== null) {
+          setLlmConfig({
+            model: currentVersion.model || llmConfig.model,
+            temperature: currentVersion.temperature ?? llmConfig.temperature,
+            maxTokens: currentVersion.max_tokens ?? llmConfig.maxTokens,
+            concurrency: currentVersion.concurrency ?? llmConfig.concurrency,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to load prompt versions:', err);
@@ -133,9 +161,13 @@ function App() {
     }
   };
 
-  const loadJudgeResults = async (csvFileId: number) => {
+  const loadJudgeResults = async (csvFileId: number, promptId: number | null) => {
+    if (!promptId) {
+      setJudgeResults([]);
+      return;
+    }
     try {
-      const results = await getJudgeResultsForCSV(csvFileId);
+      const results = await getJudgeResultsForCSV(csvFileId, promptId);
       setJudgeResults(results);
     } catch (err) {
       console.error('Failed to load judge results:', err);
@@ -153,9 +185,13 @@ function App() {
     }
   };
 
-  const loadFunctionEvalResults = async (csvFileId: number) => {
+  const loadFunctionEvalResults = async (csvFileId: number, promptId: number | null) => {
+    if (!promptId) {
+      setFunctionEvalResults([]);
+      return;
+    }
     try {
-      const results = await getFunctionEvalResultsForCSV(csvFileId);
+      const results = await getFunctionEvalResultsForCSV(csvFileId, promptId);
       setFunctionEvalResults(results);
     } catch (err) {
       console.error('Failed to load function eval results:', err);
@@ -163,9 +199,13 @@ function App() {
     }
   };
 
-  const loadEvaluations = async (csvFileId: number) => {
+  const loadEvaluations = async (csvFileId: number, promptId: number | null) => {
+    if (!promptId) {
+      setEvaluations([]);
+      return;
+    }
     try {
-      const evals = await getEvaluationsForCSV(csvFileId);
+      const evals = await getEvaluationsForCSV(csvFileId, promptId);
       setEvaluations(evals);
     } catch (err) {
       console.error('Failed to load evaluations:', err);
@@ -180,10 +220,13 @@ function App() {
       loadPrompt(selectedFileId);
       loadGroupedPrompts(selectedFileId);
       loadJudgeConfigs(selectedFileId);
-      loadJudgeResults(selectedFileId);
+      // Load results when both file and prompt are available
+      if (currentPrompt?.id) {
+        loadJudgeResults(selectedFileId, currentPrompt.id);
+        loadFunctionEvalResults(selectedFileId, currentPrompt.id);
+        loadEvaluations(selectedFileId, currentPrompt.id);
+      }
       loadFunctionEvalConfigs(selectedFileId);
-      loadFunctionEvalResults(selectedFileId);
-      loadEvaluations(selectedFileId);
     } else {
       setCsvData(null);
       setCurrentPrompt(null);
@@ -196,6 +239,19 @@ function App() {
       setEvaluations([]);
     }
   }, [selectedFileId]);
+
+  // Reload results when prompt changes
+  useEffect(() => {
+    if (selectedFileId && currentPrompt?.id) {
+      loadJudgeResults(selectedFileId, currentPrompt.id);
+      loadFunctionEvalResults(selectedFileId, currentPrompt.id);
+      loadEvaluations(selectedFileId, currentPrompt.id);
+    } else {
+      setJudgeResults([]);
+      setFunctionEvalResults([]);
+      setEvaluations([]);
+    }
+  }, [currentPrompt?.id, selectedFileId]);
 
   const handleUploadSuccess = useCallback(async (data: CSVData) => {
     // Optimistically add the new file to the list
@@ -214,7 +270,6 @@ function App() {
 
   const handleDeleteFile = async (id: number) => {
     try {
-      setError(null);
       const wasSelected = selectedFileId === id;
       await deleteCSV(id);
       
@@ -232,23 +287,24 @@ function App() {
           setCsvData(null);
         }
       }
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete CSV file');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to delete CSV file');
     }
   };
 
   const handleDropColumns = async (columns: string[]) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       setLoading(true);
       await dropColumns(selectedFileId, columns);
       // Reload the data to reflect the dropped columns
       await loadCSVData(selectedFileId);
       // Also reload the file list to update column count
       await loadCSVFiles();
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to drop columns');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to drop columns');
     } finally {
       setLoading(false);
     }
@@ -257,22 +313,22 @@ function App() {
   const handleRenameColumn = async (oldName: string, newName: string) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       setLoading(true);
       await renameColumn(selectedFileId, oldName, newName);
       // Reload the data to reflect the renamed column
       await loadCSVData(selectedFileId);
       // Also reload the file list to update column count
       await loadCSVFiles();
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename column');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to rename column');
     } finally {
       setLoading(false);
     }
   };
 
   const handleUpdateRow = async (rowId: number, annotation?: number | null, feedback?: string) => {
-    if (!selectedFileId) return;
+    if (!selectedFileId || !currentPrompt?.id) return;
     
     // Store optimistic update values
     const optimisticAnnotation = annotation !== undefined ? annotation : undefined;
@@ -281,7 +337,7 @@ function App() {
     try {
       // Optimistically update evaluations array for immediate UI feedback
       setEvaluations(prev => {
-        const index = prev.findIndex(e => e.csv_row_id === rowId);
+        const index = prev.findIndex(e => e.csv_row_id === rowId && e.prompt_id === currentPrompt.id);
         if (index >= 0) {
           // Update existing evaluation
           const updated = [...prev];
@@ -297,6 +353,7 @@ function App() {
           id: 0, // Temporary ID, will be replaced on reload
           csv_file_id: selectedFileId!,
           csv_row_id: rowId,
+          prompt_id: currentPrompt.id,
           output: null,
           annotation: optimisticAnnotation !== undefined ? optimisticAnnotation : null,
           feedback: optimisticFeedback !== undefined ? optimisticFeedback : null,
@@ -307,21 +364,21 @@ function App() {
       });
       
       // Update backend
-      await updateEvaluation(rowId, undefined, annotation, feedback);
+      await updateEvaluation(rowId, currentPrompt.id, undefined, annotation, feedback);
       
       // Reload evaluations after a brief delay to ensure server has processed the update
       // This ensures consistency while preserving the optimistic update until reload completes
       setTimeout(async () => {
-        await loadEvaluations(selectedFileId);
+        await loadEvaluations(selectedFileId, currentPrompt.id);
       }, 100);
       
       // Note: DataTable component handles its own state synchronization by refetching
       // evaluations from the backend after updates, ensuring SSOT consistency.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update row');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to update row');
       // Reload on error to ensure consistency
-      if (selectedFileId) {
-        await loadEvaluations(selectedFileId);
+      if (selectedFileId && currentPrompt?.id) {
+        await loadEvaluations(selectedFileId, currentPrompt.id);
       }
     }
   };
@@ -329,38 +386,68 @@ function App() {
   const handleSavePrompt = async (systemPrompt: string, userMessageColumn: string | null, createNewVersion: boolean, name?: string, commitMessage?: string) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
-      
       // If name is provided, we're creating a new prompt (new branch)
       // Otherwise, if currentPrompt exists, we're creating a new version (commit)
       if (name && name.trim()) {
         // Create a new root prompt (new branch) - don't pass parent_prompt_id
-        const created = await createPrompt(systemPrompt, selectedFileId, name, undefined, undefined, userMessageColumn);
+        const created = await createPrompt(
+          systemPrompt, 
+          selectedFileId, 
+          name, 
+          undefined, 
+          undefined, 
+          userMessageColumn,
+          llmConfig.model,
+          llmConfig.temperature,
+          llmConfig.maxTokens,
+          llmConfig.concurrency
+        );
         setCurrentPrompt(created);
         await loadPromptVersions(created.id);
         await loadGroupedPrompts(selectedFileId);
       } else if (currentPrompt) {
         // When a prompt exists, create a new version (commit)
-        const newVersion = await createPromptVersion(currentPrompt.id, systemPrompt, userMessageColumn, undefined, commitMessage);
+        const newVersion = await createPromptVersion(
+          currentPrompt.id, 
+          systemPrompt, 
+          userMessageColumn, 
+          undefined, 
+          commitMessage,
+          llmConfig.model,
+          llmConfig.temperature,
+          llmConfig.maxTokens,
+          llmConfig.concurrency
+        );
         setCurrentPrompt(newVersion);
         await loadPromptVersions(newVersion.id);
         await loadGroupedPrompts(selectedFileId);
       } else {
         // Fallback: create a new prompt without a name (will be "Unnamed")
-        const created = await createPrompt(systemPrompt, selectedFileId, name, undefined, undefined, userMessageColumn);
+        const created = await createPrompt(
+          systemPrompt, 
+          selectedFileId, 
+          name, 
+          undefined, 
+          undefined, 
+          userMessageColumn,
+          llmConfig.model,
+          llmConfig.temperature,
+          llmConfig.maxTokens,
+          llmConfig.concurrency
+        );
         setCurrentPrompt(created);
         await loadPromptVersions(created.id);
         await loadGroupedPrompts(selectedFileId);
       }
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save prompt');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to save prompt');
       throw err;
     }
   };
 
   const handleVersionNameUpdate = async (versionId: number, newName: string | null) => {
     try {
-      setError(null);
       const updated = await updatePromptAPI(versionId, undefined, newName ?? undefined);
       // If this is the current prompt, update it
       if (currentPrompt?.id === versionId) {
@@ -369,8 +456,9 @@ function App() {
       // Reload versions to show the updated name - use the root prompt ID
       const rootPromptId = updated.parent_prompt_id || updated.id;
       await loadPromptVersions(rootPromptId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update version name');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to update version name');
       throw err;
     }
   };
@@ -379,26 +467,24 @@ function App() {
     try {
       const selectedVersion = await getPrompt(versionId);
       setCurrentPrompt(selectedVersion);
+      
+      // Load LLM config from the prompt version if it exists
+      if (selectedVersion.model || selectedVersion.temperature !== null || selectedVersion.max_tokens !== null || selectedVersion.concurrency !== null) {
+        setLlmConfig({
+          model: selectedVersion.model || llmConfig.model,
+          temperature: selectedVersion.temperature ?? llmConfig.temperature,
+          maxTokens: selectedVersion.max_tokens ?? llmConfig.maxTokens,
+          concurrency: selectedVersion.concurrency ?? llmConfig.concurrency,
+        });
+      }
+      
       // currentSystemPrompt and currentUserMessageColumn will be synced by PromptEditor's onContentChange callback
       // when the prompt prop changes and the textarea/select updates
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load prompt version');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to load prompt version');
     }
   };
 
-  const handleAutoSave = async (promptId: number, systemPrompt: string, userMessageColumn: string | null) => {
-    try {
-      // Update the prompt content in the database without creating a new version
-      const updated = await updatePromptAPI(promptId, systemPrompt, userMessageColumn);
-      // Update currentPrompt to reflect the saved content
-      if (currentPrompt?.id === promptId) {
-        setCurrentPrompt(updated);
-      }
-    } catch (err) {
-      console.error('Auto-save failed:', err);
-      // Don't throw - auto-save failures should be silent
-    }
-  };
 
   const handlePromptContentChange = useCallback((systemPrompt: string, userMessageColumn: string | null) => {
     setCurrentSystemPrompt(systemPrompt);
@@ -409,7 +495,6 @@ function App() {
     if (!selectedFileId) return;
 
     try {
-      setError(null);
       const wasCurrentPrompt = currentPrompt?.id === promptId;
       const currentPromptName = currentPrompt?.name || 'Unnamed';
       
@@ -427,6 +512,7 @@ function App() {
         if (samePromptVersions && samePromptVersions.length > 0) {
           // Select the latest version of the same prompt
           await handleVersionSelect(samePromptVersions[samePromptVersions.length - 1].id);
+          setErrorWithTimestamp(null); // Clear error only on success
           return;
         }
         
@@ -445,8 +531,9 @@ function App() {
           setPromptVersions([]);
         }
       }
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete prompt');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to delete prompt');
       throw err;
     }
   };
@@ -468,8 +555,9 @@ function App() {
     
     setIsRunning(true);
     setIsRunningAll(isAllRows);
-    setError(null);
     setLatestEvaluation(null);
+
+    let hadErrors = false; // Track if any errors occurred
 
     try {
       // Clear outputs, annotations, and feedback first if requested (for "Run All" scenario)
@@ -483,7 +571,7 @@ function App() {
         setClearAllOutputs(true);
         
         const clearPromises = rowIds.map(rowId => 
-          updateEvaluation(rowId, "", null, null)
+          updateEvaluation(rowId, currentPrompt.id, "", null, null)
         );
         await Promise.all(clearPromises);
         
@@ -538,8 +626,9 @@ function App() {
             if (cancellationRef.current) {
               return { success: false, rowId, error: new Error('Cancelled') };
             }
+            hadErrors = true; // Mark that we had errors
             const errorMessage = err instanceof Error ? err.message : `Failed to run prompt for row ${rowId}`;
-            setError(errorMessage);
+            setErrorWithTimestamp(errorMessage);
             return { success: false, rowId, error: err };
           }
         });
@@ -553,18 +642,23 @@ function App() {
         }
       }
     } catch (err) {
+      hadErrors = true;
       // Don't set error if cancelled
       if (!cancellationRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to run prompts');
+        setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run prompts');
       }
     } finally {
       setIsRunning(false);
       setIsRunningAll(false);
       setIsCancelling(false);
       cancellationRef.current = false; // Reset cancellation flag
+      // Only clear error if run completed successfully without errors and wasn't cancelled
+      if (!hadErrors && !cancellationRef.current) {
+        setErrorWithTimestamp(null);
+      }
       // Reload evaluations to update OptimizerPanel dashboard
-      if (selectedFileId) {
-        await loadEvaluations(selectedFileId);
+      if (selectedFileId && currentPrompt?.id) {
+        await loadEvaluations(selectedFileId, currentPrompt.id);
       }
       // Clear latestEvaluation after a brief delay to allow last update to process
       // But don't reload all data - incremental updates are already handled
@@ -576,7 +670,7 @@ function App() {
 
   const handleRunAll = async () => {
     if (!csvData || csvData.rows.length === 0) {
-      setError('No rows to run');
+      setErrorWithTimestamp('No rows to run');
       return;
     }
     
@@ -626,15 +720,19 @@ function App() {
     }
     
     try {
-      setError(null);
       const allRowIds = csvData.rows.map(row => row.id);
+      
+      if (!currentPrompt?.id) {
+        setErrorWithTimestamp('No prompt selected');
+        return;
+      }
       
       // Immediately update UI to show cleared outputs
       setClearAllOutputs(true);
       
       // Clear all evaluation outputs
       const clearPromises = allRowIds.map(rowId => 
-        updateEvaluation(rowId, "", null, null)
+        updateEvaluation(rowId, currentPrompt.id, "", null, null)
       );
       await Promise.all(clearPromises);
       
@@ -668,8 +766,9 @@ function App() {
       setTimeout(() => {
         setClearAllOutputs(false);
       }, 100);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear all outputs');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear all outputs');
     }
   };
 
@@ -678,16 +777,16 @@ function App() {
       throw new Error('No CSV file selected');
     }
     try {
-      setError(null);
       const config = await createJudgeConfig(selectedFileId, name, prompt, {
         model: llmConfig.model,
         temperature: llmConfig.temperature,
         maxTokens: llmConfig.maxTokens,
       });
       await loadJudgeConfigs(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
       return config;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create judge config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to create judge config');
       throw err;
     }
   };
@@ -695,11 +794,11 @@ function App() {
   const handleUpdateJudgeConfig = async (id: number, partial: { name?: string; prompt?: string; model?: string; temperature?: number; maxTokens?: number }) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await updateJudgeConfig(id, partial);
       await loadJudgeConfigs(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update judge config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to update judge config');
       throw err;
     }
   };
@@ -707,30 +806,34 @@ function App() {
   const handleDeleteJudgeConfig = async (id: number) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await deleteJudgeConfig(id);
       await loadJudgeConfigs(selectedFileId);
       await loadJudgeResults(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete judge config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to delete judge config');
       throw err;
     }
   };
 
   const handleRunJudgeForRow = async (configId: number, rowId: number) => {
+    if (!currentPrompt?.id) {
+      setErrorWithTimestamp('No prompt selected');
+      return;
+    }
     const cellKey = `${configId}-${rowId}`;
     try {
       setRunningJudgeCells(prev => new Set(prev).add(cellKey));
-      const result = await runJudge({ configId, csvRowId: rowId });
+      const result = await runJudge({ configId, csvRowId: rowId, promptId: currentPrompt.id });
       // Update incrementally as result comes in (similar to latestEvaluation)
       // Update synchronously to trigger immediate UI update
       setLatestJudgeResult(result);
       setJudgeResults(prev => {
-        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
         return [...next, result];
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run judge evaluation');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run judge evaluation');
     } finally {
       setRunningJudgeCells(prev => {
         const next = new Set(prev);
@@ -741,16 +844,17 @@ function App() {
   };
 
   const handleRunJudgeForAllRows = async (configId: number, concurrency: number = 10) => {
-    if (!selectedFileId || !csvData) return;
+    if (!selectedFileId || !csvData || !currentPrompt?.id) return;
     
     judgeCancellationRef.current = false;
     setIsRunningJudge(true);
     setRunningJudgeConfigId(configId);
-    setError(null);
+
+    let hadErrors = false; // Track if any errors occurred
 
     try {
       // Fetch evaluations to check which rows have outputs
-      const evaluations = await getEvaluationsForCSV(selectedFileId);
+      const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
       const evaluationsByRowId = new Map<number, Evaluation>();
       evaluations.forEach(evaluation => {
         evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
@@ -766,7 +870,7 @@ function App() {
         .map(row => row.id);
 
       if (validRowIds.length === 0) {
-        setError('No rows with outputs found. Run prompts first to generate outputs.');
+        setErrorWithTimestamp('No rows with outputs found. Run prompts first to generate outputs.');
         return;
       }
 
@@ -802,13 +906,13 @@ function App() {
           }
           
           try {
-            const result = await runJudge({ configId, csvRowId: rowId });
+            const result = await runJudge({ configId, csvRowId: rowId, promptId: currentPrompt.id });
             // Update incrementally as each result comes in (similar to latestEvaluation)
             // Use setTimeout to ensure each update happens in its own render cycle
             setTimeout(() => {
               setLatestJudgeResult(result);
               setJudgeResults(prev => {
-                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
                 return [...next, result];
               });
               // Clear the running state for this specific cell
@@ -827,8 +931,9 @@ function App() {
               return next;
             });
             if (!judgeCancellationRef.current) {
+              hadErrors = true; // Mark that we had errors
               const errorMessage = err instanceof Error ? err.message : `Failed to run judge for row ${rowId}`;
-              setError(errorMessage);
+              setErrorWithTimestamp(errorMessage);
             }
             return { success: false, rowId, error: err };
           }
@@ -841,14 +946,19 @@ function App() {
         }
       }
     } catch (err) {
+      hadErrors = true;
       if (!judgeCancellationRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to run judge evaluations');
+        setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run judge evaluations');
       }
     } finally {
       setIsRunningJudge(false);
       setRunningJudgeConfigId(null);
       setIsCancellingJudge(false);
       judgeCancellationRef.current = false;
+      // Only clear error if run completed successfully without errors and wasn't cancelled
+      if (!hadErrors && !judgeCancellationRef.current) {
+        setErrorWithTimestamp(null);
+      }
       // Clear latestJudgeResult after a brief delay to allow last update to process
       setTimeout(() => {
         setLatestJudgeResult(null);
@@ -862,22 +972,26 @@ function App() {
   };
 
   const handleClearJudgeForRow = async (configId: number, rowId: number) => {
+    if (!currentPrompt?.id) {
+      setErrorWithTimestamp('No prompt selected');
+      return;
+    }
     try {
-      await deleteJudgeResult(configId, rowId);
-      setJudgeResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId)));
+      await deleteJudgeResult(configId, rowId, currentPrompt.id);
+      setJudgeResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear judge result');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear judge result');
     }
   };
 
   const handleClearJudgeForAllRows = async (configId: number) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await deleteJudgeResultsForConfig(configId);
       await loadJudgeResults(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear judge results');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear judge results');
     }
   };
 
@@ -887,13 +1001,13 @@ function App() {
       throw new Error('No CSV file selected');
     }
     try {
-      setError(null);
       // Use functionName as the name for the evaluation
       const created = await createFunctionEvalConfig(selectedFileId, functionName, functionName, config);
       await loadFunctionEvalConfigs(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
       return created;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create function eval config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to create function eval config');
       throw err;
     }
   };
@@ -901,11 +1015,11 @@ function App() {
   const handleUpdateFunctionEvalConfig = async (id: number, partial: { name?: string; config?: Record<string, any> }) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await updateFunctionEvalConfig(id, partial);
       await loadFunctionEvalConfigs(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update function eval config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to update function eval config');
       throw err;
     }
   };
@@ -913,37 +1027,40 @@ function App() {
   const handleDeleteFunctionEvalConfig = async (id: number) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await deleteFunctionEvalConfig(id);
       await loadFunctionEvalConfigs(selectedFileId);
       await loadFunctionEvalResults(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete function eval config');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to delete function eval config');
       throw err;
     }
   };
 
   const handleRunFunctionEvalForRow = async (configId: number, rowId: number) => {
+    if (!currentPrompt?.id) {
+      setErrorWithTimestamp('No prompt selected');
+      return;
+    }
     try {
-      const result = await runFunctionEval(configId, rowId);
+      const result = await runFunctionEval(configId, rowId, currentPrompt.id);
       // Update incrementally as result comes in
       setLatestFunctionEvalResult(result);
       setFunctionEvalResults(prev => {
-        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+        const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
         return [...next, result];
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run function evaluation');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run function evaluation');
     }
   };
 
   const handleRunFunctionEvalForAllRows = async (configId: number, concurrency: number = 10) => {
-    if (!selectedFileId || !csvData) return;
+    if (!selectedFileId || !csvData || !currentPrompt?.id) return;
     
     try {
-      setError(null);
       // Fetch evaluations to check which rows have outputs
-      const evaluations = await getEvaluationsForCSV(selectedFileId);
+      const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
       const evaluationsByRowId = new Map<number, Evaluation>();
       evaluations.forEach(evaluation => {
         evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
@@ -959,7 +1076,7 @@ function App() {
         .map(row => row.id);
 
       if (validRowIds.length === 0) {
-        setError('No rows with outputs found. Run prompts first to generate outputs.');
+        setErrorWithTimestamp('No rows with outputs found. Run prompts first to generate outputs.');
         return;
       }
 
@@ -978,27 +1095,28 @@ function App() {
       for (const batch of batches) {
         const batchPromises = batch.map(async (rowId) => {
           try {
-            const result = await runFunctionEval(configId, rowId);
+            const result = await runFunctionEval(configId, rowId, currentPrompt.id);
             // Update incrementally as each result comes in
             setTimeout(() => {
               setLatestFunctionEvalResult(result);
               setFunctionEvalResults(prev => {
-                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId));
+                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
                 return [...next, result];
               });
             }, 0);
             return { success: true, rowId, result };
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : `Failed to run function eval for row ${rowId}`;
-            setError(errorMessage);
+            setErrorWithTimestamp(errorMessage);
             return { success: false, rowId, error: err };
           }
         });
 
         await Promise.allSettled(batchPromises);
       }
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run function evaluations');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run function evaluations');
     } finally {
       setTimeout(() => {
         setLatestFunctionEvalResult(null);
@@ -1007,22 +1125,26 @@ function App() {
   };
 
   const handleClearFunctionEvalForRow = async (configId: number, rowId: number) => {
+    if (!currentPrompt?.id) {
+      setErrorWithTimestamp('No prompt selected');
+      return;
+    }
     try {
-      await deleteFunctionEvalResult(configId, rowId);
-      setFunctionEvalResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId)));
+      await deleteFunctionEvalResult(configId, rowId, currentPrompt.id);
+      setFunctionEvalResults(prev => prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear function eval result');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear function eval result');
     }
   };
 
   const handleClearFunctionEvalForAllRows = async (configId: number) => {
     if (!selectedFileId) return;
     try {
-      setError(null);
       await deleteFunctionEvalResultsForConfig(configId);
       await loadFunctionEvalResults(selectedFileId);
+      setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear function eval results');
+      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear function eval results');
     }
   };
 
@@ -1067,9 +1189,20 @@ function App() {
           justifyContent: 'space-between',
           gap: '1rem',
         }}>
-          <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{error}</span>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{error}</span>
+            {errorTimestamp && (
+              <span style={{ 
+                fontSize: '0.6875rem', 
+                color: 'var(--text-tertiary)',
+                fontWeight: '500',
+              }}>
+                {errorTimestamp.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
           <button
-            onClick={() => setError(null)}
+            onClick={() => setErrorWithTimestamp(null)}
             style={{
               padding: '0.25rem 0.5rem',
               backgroundColor: 'transparent',
@@ -1128,7 +1261,6 @@ function App() {
                 onVersionSelect={handleVersionSelect}
                 onDeletePrompt={handleDeletePrompt}
                 onContentChange={handlePromptContentChange}
-                onAutoSave={handleAutoSave}
                 llmConfig={llmConfig}
                 onLLMConfigChange={setLlmConfig}
                 onRunAll={handleRunAll}

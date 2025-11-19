@@ -7,6 +7,7 @@ class EvaluationResponse(BaseModel):
     id: int
     csv_file_id: int
     csv_row_id: int
+    prompt_id: int
     output: Optional[str] = None
     annotation: Optional[int] = None  # 1 for thumbs up, 0 for thumbs down, None for null
     feedback: Optional[str] = None
@@ -18,6 +19,7 @@ class EvaluationResponse(BaseModel):
 
 
 class UpdateEvaluationRequest(BaseModel):
+    prompt_id: int
     output: Optional[str] = None
     annotation: Optional[int] = None  # 1 for thumbs up, 0 for thumbs down, None for null
     feedback: Optional[str] = None
@@ -32,6 +34,7 @@ class UpdateEvaluationRequest(BaseModel):
 
 class CreateEvaluationRequest(BaseModel):
     csv_row_id: int
+    prompt_id: int
     output: Optional[str] = None
     annotation: Optional[int] = None
     feedback: Optional[str] = None

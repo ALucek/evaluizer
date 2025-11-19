@@ -29,6 +29,7 @@ export interface Evaluation {
   id: number;
   csv_file_id: number;
   csv_row_id: number;
+  prompt_id: number;
   output: string | null;
   annotation: number | null; // 1 for thumbs up, 0 for thumbs down, null for none
   feedback: string | null;
@@ -45,6 +46,10 @@ export interface Prompt {
   version: number;
   commit_message: string | null;
   parent_prompt_id: number | null;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  concurrency: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +71,7 @@ export interface JudgeResult {
   config_id: number;
   csv_file_id: number;
   csv_row_id: number;
+  prompt_id: number;
   score: number;
   raw_output: string | null;
   created_at: string;
@@ -87,6 +93,7 @@ export interface FunctionEvalResult {
   config_id: number;
   csv_file_id: number;
   csv_row_id: number;
+  prompt_id: number;
   score: number;
   details: Record<string, any> | null;
   created_at: string;
@@ -278,9 +285,9 @@ export async function renameColumn(csvId: number, oldName: string, newName: stri
   }
 }
 
-export async function getEvaluationsForCSV(csvId: number): Promise<Evaluation[]> {
+export async function getEvaluationsForCSV(csvId: number, promptId: number): Promise<Evaluation[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluation/csv/${csvId}`);
+    const response = await fetch(`${API_BASE_URL}/evaluation/csv/${csvId}?prompt_id=${promptId}`);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -296,9 +303,9 @@ export async function getEvaluationsForCSV(csvId: number): Promise<Evaluation[]>
   }
 }
 
-export async function getEvaluationForRow(rowId: number): Promise<Evaluation | null> {
+export async function getEvaluationForRow(rowId: number, promptId: number): Promise<Evaluation | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/evaluation/row/${rowId}`);
+    const response = await fetch(`${API_BASE_URL}/evaluation/row/${rowId}?prompt_id=${promptId}`);
     
     if (response.status === 404) {
       return null;
@@ -320,12 +327,15 @@ export async function getEvaluationForRow(rowId: number): Promise<Evaluation | n
 
 export async function updateEvaluation(
   rowId: number,
+  promptId: number,
   output?: string | null,
   annotation?: number | null,
   feedback?: string | null
 ): Promise<Evaluation> {
   try {
-    const body: { output?: string | null; annotation?: number | null; feedback?: string | null } = {};
+    const body: { prompt_id: number; output?: string | null; annotation?: number | null; feedback?: string | null } = {
+      prompt_id: promptId,
+    };
     if (output !== undefined) {
       body.output = output;
     }
@@ -362,11 +372,12 @@ export async function updateEvaluation(
 export async function updateRow(
   csvId: number,
   rowId: number,
+  promptId: number,
   annotation?: number | null,
   feedback?: string
 ): Promise<CSVRow> {
   // Use the new evaluation endpoint
-  await updateEvaluation(rowId, undefined, annotation, feedback);
+  await updateEvaluation(rowId, promptId, undefined, annotation, feedback);
   // Return the row (we'd need to fetch it, but for now just return a placeholder)
   // This is kept for backward compatibility during migration
   return { id: rowId, csv_file_id: csvId, row_data: {} };
@@ -437,7 +448,11 @@ export async function createPromptVersion(
   systemPrompt: string,
   userMessageColumn?: string | null,
   name?: string,
-  commitMessage?: string
+  commitMessage?: string,
+  model?: string | null,
+  temperature?: number | null,
+  maxTokens?: number | null,
+  concurrency?: number | null
 ): Promise<Prompt> {
   try {
     const response = await fetch(`${API_BASE_URL}/prompt/${promptId}/versions`, {
@@ -450,6 +465,10 @@ export async function createPromptVersion(
         user_message_column: userMessageColumn || null,
         name: name || null,
         commit_message: commitMessage || null,
+        model: model ?? null,
+        temperature: temperature ?? null,
+        max_tokens: maxTokens ?? null,
+        concurrency: concurrency ?? null,
       }),
     });
     
@@ -498,7 +517,11 @@ export async function createPrompt(
   name?: string,
   parentPromptId?: number,
   commitMessage?: string,
-  userMessageColumn?: string | null
+  userMessageColumn?: string | null,
+  model?: string | null,
+  temperature?: number | null,
+  maxTokens?: number | null,
+  concurrency?: number | null
 ): Promise<Prompt> {
   try {
     const response = await fetch(`${API_BASE_URL}/prompt/`, {
@@ -513,6 +536,10 @@ export async function createPrompt(
         name: name || null,
         parent_prompt_id: parentPromptId || null,
         commit_message: commitMessage || null,
+        model: model || null,
+        temperature: temperature ?? null,
+        max_tokens: maxTokens ?? null,
+        concurrency: concurrency ?? null,
       }),
     });
     
@@ -543,10 +570,24 @@ export async function updatePrompt(
   userMessageColumn?: string | null,
   name?: string,
   csvFileId?: number | null,
-  commitMessage?: string
+  commitMessage?: string,
+  model?: string | null,
+  temperature?: number | null,
+  maxTokens?: number | null,
+  concurrency?: number | null
 ): Promise<Prompt> {
   try {
-    const body: { system_prompt?: string; user_message_column?: string | null; name?: string; csv_file_id?: number | null; commit_message?: string } = {};
+    const body: { 
+      system_prompt?: string; 
+      user_message_column?: string | null; 
+      name?: string; 
+      csv_file_id?: number | null; 
+      commit_message?: string;
+      model?: string | null;
+      temperature?: number | null;
+      max_tokens?: number | null;
+      concurrency?: number | null;
+    } = {};
     if (systemPrompt !== undefined) {
       body.system_prompt = systemPrompt;
     }
@@ -561,6 +602,18 @@ export async function updatePrompt(
     }
     if (commitMessage !== undefined) {
       body.commit_message = commitMessage;
+    }
+    if (model !== undefined) {
+      body.model = model;
+    }
+    if (temperature !== undefined) {
+      body.temperature = temperature;
+    }
+    if (maxTokens !== undefined) {
+      body.max_tokens = maxTokens;
+    }
+    if (concurrency !== undefined) {
+      body.concurrency = concurrency;
     }
 
     const response = await fetch(`${API_BASE_URL}/prompt/${promptId}`, {
@@ -828,9 +881,9 @@ export async function deleteJudgeConfig(id: number): Promise<void> {
   }
 }
 
-export async function getJudgeResultsForCSV(csvId: number): Promise<JudgeResult[]> {
+export async function getJudgeResultsForCSV(csvId: number, promptId: number): Promise<JudgeResult[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/judge/results/csv/${csvId}`);
+    const response = await fetch(`${API_BASE_URL}/judge/results/csv/${csvId}?prompt_id=${promptId}`);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -846,7 +899,7 @@ export async function getJudgeResultsForCSV(csvId: number): Promise<JudgeResult[
   }
 }
 
-export async function runJudge(config: { configId: number; csvRowId: number }): Promise<JudgeResult> {
+export async function runJudge(config: { configId: number; csvRowId: number; promptId: number }): Promise<JudgeResult> {
   try {
     const response = await fetch(`${API_BASE_URL}/judge/run`, {
       method: 'POST',
@@ -856,6 +909,7 @@ export async function runJudge(config: { configId: number; csvRowId: number }): 
       body: JSON.stringify({
         config_id: config.configId,
         csv_row_id: config.csvRowId,
+        prompt_id: config.promptId,
       }),
     });
 
@@ -880,9 +934,9 @@ export async function runJudge(config: { configId: number; csvRowId: number }): 
   }
 }
 
-export async function deleteJudgeResult(configId: number, rowId: number): Promise<void> {
+export async function deleteJudgeResult(configId: number, rowId: number, promptId: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/judge/results/config/${configId}/row/${rowId}`, {
+    const response = await fetch(`${API_BASE_URL}/judge/results/config/${configId}/row/${rowId}?prompt_id=${promptId}`, {
       method: 'DELETE',
     });
     
@@ -1080,9 +1134,9 @@ export async function deleteFunctionEvalConfig(id: number): Promise<void> {
   }
 }
 
-export async function getFunctionEvalResultsForCSV(csvId: number): Promise<FunctionEvalResult[]> {
+export async function getFunctionEvalResultsForCSV(csvId: number, promptId: number): Promise<FunctionEvalResult[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/function-eval/results/csv/${csvId}`);
+    const response = await fetch(`${API_BASE_URL}/function-eval/results/csv/${csvId}?prompt_id=${promptId}`);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -1098,7 +1152,7 @@ export async function getFunctionEvalResultsForCSV(csvId: number): Promise<Funct
   }
 }
 
-export async function runFunctionEval(configId: number, csvRowId: number): Promise<FunctionEvalResult> {
+export async function runFunctionEval(configId: number, csvRowId: number, promptId: number): Promise<FunctionEvalResult> {
   try {
     const response = await fetch(`${API_BASE_URL}/function-eval/run`, {
       method: 'POST',
@@ -1108,6 +1162,7 @@ export async function runFunctionEval(configId: number, csvRowId: number): Promi
       body: JSON.stringify({
         config_id: configId,
         csv_row_id: csvRowId,
+        prompt_id: promptId,
       }),
     });
 
@@ -1132,9 +1187,9 @@ export async function runFunctionEval(configId: number, csvRowId: number): Promi
   }
 }
 
-export async function deleteFunctionEvalResult(configId: number, rowId: number): Promise<void> {
+export async function deleteFunctionEvalResult(configId: number, rowId: number, promptId: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/function-eval/results/config/${configId}/row/${rowId}`, {
+    const response = await fetch(`${API_BASE_URL}/function-eval/results/config/${configId}/row/${rowId}?prompt_id=${promptId}`, {
       method: 'DELETE',
     });
     

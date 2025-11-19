@@ -89,6 +89,7 @@ class FunctionEvalResultResponse(BaseModel):
     config_id: int
     csv_file_id: int
     csv_row_id: int
+    prompt_id: int
     score: float
     details: Optional[Dict[str, Any]] = None
     created_at: datetime
@@ -102,4 +103,5 @@ class RunFunctionEvalRequest(BaseModel):
     """Request to run a function evaluation (Phase 2 - via config)."""
     config_id: int
     csv_row_id: int
+    prompt_id: int
 

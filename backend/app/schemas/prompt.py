@@ -12,6 +12,10 @@ class PromptResponse(BaseModel):
     version: int
     commit_message: Optional[str] = None
     parent_prompt_id: Optional[int] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    concurrency: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     
@@ -26,6 +30,10 @@ class CreatePromptRequest(BaseModel):
     csv_file_id: Optional[int] = None
     commit_message: Optional[str] = None
     parent_prompt_id: Optional[int] = None  # If provided, creates a new version
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    concurrency: Optional[int] = None
 
 
 class UpdatePromptRequest(BaseModel):
@@ -34,6 +42,10 @@ class UpdatePromptRequest(BaseModel):
     user_message_column: Optional[str] = None
     csv_file_id: Optional[int] = None
     commit_message: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    concurrency: Optional[int] = None
 
 
 class CreateVersionRequest(BaseModel):
@@ -41,4 +53,8 @@ class CreateVersionRequest(BaseModel):
     user_message_column: Optional[str] = None
     name: Optional[str] = None
     commit_message: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    concurrency: Optional[int] = None
 

@@ -36,17 +36,19 @@ class JudgeResult(Base):
     config_id = Column(Integer, ForeignKey("judge_configs.id", ondelete="CASCADE"), nullable=False)
     csv_file_id = Column(Integer, ForeignKey("csv_files.id", ondelete="CASCADE"), nullable=False)
     csv_row_id = Column(Integer, ForeignKey("csv_rows.id", ondelete="CASCADE"), nullable=False)
+    prompt_id = Column(Integer, ForeignKey("prompts.id", ondelete="CASCADE"), nullable=False)
     score = Column(Float, nullable=False)  # Parsed score from <score>...</score>
     raw_output = Column(Text, nullable=True)  # Full LLM output text
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # Unique constraint: one result per config per row
+    # Unique constraint: one result per config per row per prompt
     __table_args__ = (
-        UniqueConstraint('config_id', 'csv_row_id', name='uq_judge_result_config_row'),
+        UniqueConstraint('config_id', 'csv_row_id', 'prompt_id', name='uq_judge_result_config_row_prompt'),
     )
     
     config = relationship("JudgeConfig", back_populates="results")
     csv_file = relationship("CSVFile", back_populates="judge_results")
     csv_row = relationship("CSVRow", back_populates="judge_results")
+    prompt = relationship("Prompt", foreign_keys=[prompt_id])
 

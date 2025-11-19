@@ -262,11 +262,11 @@ export default function DataTable({
     return () => window.removeEventListener('resize', handleResize);
   }, [data?.columns, columnWidths]);
 
-  // Fetch evaluations when data changes
+  // Fetch evaluations when data or prompt changes
   useEffect(() => {
-    if (data?.id) {
+    if (data?.id && currentPrompt?.id) {
       processedEvaluationIds.current.clear(); // Reset processed IDs when data changes
-      getEvaluationsForCSV(data.id)
+      getEvaluationsForCSV(data.id, currentPrompt.id)
         .then((evals) => {
           const evalMap: { [key: number]: Evaluation } = {};
           evals.forEach((evaluation) => {
@@ -274,16 +274,15 @@ export default function DataTable({
           });
           setEvaluations(evalMap);
 
-          // Initialize local row data from evaluations, preserving existing local data if it exists
-          setLocalRowData((prevLocalData) => {
+          // Initialize local row data from evaluations - use evaluation data as source of truth when prompt changes
+          setLocalRowData(() => {
             const initialData: { [key: number]: any } = {};
             data.rows.forEach((row) => {
               const evaluation = evalMap[row.id];
-              const existingLocal = prevLocalData[row.id] || {};
               initialData[row.id] = {
-                annotation: existingLocal.annotation ?? evaluation?.annotation ?? null,
-                feedback: existingLocal.feedback ?? evaluation?.feedback ?? '',
-                output: existingLocal.output ?? evaluation?.output ?? '',
+                annotation: evaluation?.annotation ?? null,
+                feedback: evaluation?.feedback ?? '',
+                output: evaluation?.output ?? '',
               };
             });
             return initialData;
@@ -292,23 +291,26 @@ export default function DataTable({
         .catch((err) => {
           console.error('Failed to load evaluations:', err);
           // Initialize with empty evaluations
-          setLocalRowData((prevLocalData) => {
+          setLocalRowData(() => {
             const initialData: { [key: number]: any } = {};
             if (data?.rows) {
               data.rows.forEach((row) => {
-                const existingLocal = prevLocalData[row.id] || {};
                 initialData[row.id] = {
-                  annotation: existingLocal.annotation ?? null,
-                  feedback: existingLocal.feedback ?? '',
-                  output: existingLocal.output ?? '',
+                  annotation: null,
+                  feedback: '',
+                  output: '',
                 };
               });
             }
             return initialData;
           });
         });
+    } else {
+      // Clear evaluations if no prompt selected
+      setEvaluations({});
+      setLocalRowData({});
     }
-  }, [data?.id]);
+  }, [data?.id, currentPrompt?.id]);
 
   // Handle clear all outputs flag - clear all outputs immediately in UI
   useEffect(() => {
@@ -331,16 +333,19 @@ export default function DataTable({
             };
           } else {
             // Create a minimal evaluation object if it doesn't exist
-            next[rowId] = {
-              id: 0,
-              csv_file_id: data.id,
-              csv_row_id: rowId,
-              output: "",
-              annotation: null,
-              feedback: null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
+            if (currentPrompt?.id) {
+              next[rowId] = {
+                id: 0,
+                csv_file_id: data.id,
+                csv_row_id: rowId,
+                prompt_id: currentPrompt.id,
+                output: "",
+                annotation: null,
+                feedback: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+            }
           }
         });
         return next;
@@ -685,29 +690,31 @@ export default function DataTable({
       try {
         await onUpdateRow(rowId, newValue);
         // Sync back from DB to ensure consistency
-        const updatedEval = await getEvaluationForRow(rowId);
-        if (updatedEval) {
-          setEvaluations(prev => ({
-            ...prev,
-            [rowId]: updatedEval,
-          }));
-          // Preserve the optimistic update - keep newValue we just set
-          // The DB response should match, but we keep our optimistic update to ensure UI stays responsive
-          // Explicitly preserve null values (not undefined) when toggling off
-          setLocalRowData(prev => {
-            const currentRowData = prev[rowId] || {};
-            return {
+        if (currentPrompt?.id) {
+          const updatedEval = await getEvaluationForRow(rowId, currentPrompt.id);
+          if (updatedEval) {
+            setEvaluations(prev => ({
               ...prev,
-              [rowId]: {
-                ...currentRowData,
-                // Keep the newValue we optimistically set - explicitly preserve null when toggling off
-                // newValue is either null (toggle off) or a number (toggle on), so use it directly
-                annotation: newValue,
-                feedback: updatedEval.feedback ?? currentRowData.feedback ?? "",
-                output: updatedEval.output ?? currentRowData.output ?? "",
-              },
-            };
-          });
+              [rowId]: updatedEval,
+            }));
+            // Preserve the optimistic update - keep newValue we just set
+            // The DB response should match, but we keep our optimistic update to ensure UI stays responsive
+            // Explicitly preserve null values (not undefined) when toggling off
+            setLocalRowData(prev => {
+              const currentRowData = prev[rowId] || {};
+              return {
+                ...prev,
+                [rowId]: {
+                  ...currentRowData,
+                  // Keep the newValue we optimistically set - explicitly preserve null when toggling off
+                  // newValue is either null (toggle off) or a number (toggle on), so use it directly
+                  annotation: newValue,
+                  feedback: updatedEval.feedback ?? currentRowData.feedback ?? "",
+                  output: updatedEval.output ?? currentRowData.output ?? "",
+                },
+              };
+            });
+          }
         }
       } catch (err) {
         console.error('Error updating annotation:', err);
@@ -760,21 +767,23 @@ export default function DataTable({
         // Also pass the current annotation state when updating feedback
         await onUpdateRow(rowId, localRowData[rowId]?.annotation, localRowData[rowId]?.feedback);
         // Sync back from DB to ensure consistency
-        const updatedEval = await getEvaluationForRow(rowId);
-        if (updatedEval) {
-          setEvaluations(prev => ({
-            ...prev,
-            [rowId]: updatedEval,
-          }));
-          setLocalRowData(prev => ({
-            ...prev,
-            [rowId]: {
-              ...prev[rowId],
-              annotation: updatedEval.annotation ?? null,
-              feedback: updatedEval.feedback ?? "",
-              output: updatedEval.output ?? "",
-            },
-          }));
+        if (currentPrompt?.id) {
+          const updatedEval = await getEvaluationForRow(rowId, currentPrompt.id);
+          if (updatedEval) {
+            setEvaluations(prev => ({
+              ...prev,
+              [rowId]: updatedEval,
+            }));
+            setLocalRowData(prev => ({
+              ...prev,
+              [rowId]: {
+                ...prev[rowId],
+                annotation: updatedEval.annotation ?? null,
+                feedback: updatedEval.feedback ?? "",
+                output: updatedEval.output ?? "",
+              },
+            }));
+          }
         }
       } catch (err) {
         console.error('Error updating feedback:', err);
@@ -803,21 +812,23 @@ export default function DataTable({
           // Also pass the current annotation state when updating feedback
           await onUpdateRow(rowId, localRowData[rowId]?.annotation, localRowData[rowId]?.feedback);
           // Sync back from DB to ensure consistency
-          const updatedEval = await getEvaluationForRow(rowId);
-          if (updatedEval) {
-            setEvaluations(prev => ({
-              ...prev,
-              [rowId]: updatedEval,
-            }));
-            setLocalRowData(prev => ({
-              ...prev,
-              [rowId]: {
-                ...prev[rowId],
-                annotation: updatedEval.annotation ?? null,
-                feedback: updatedEval.feedback ?? "",
-                output: updatedEval.output ?? "",
-              },
-            }));
+          if (currentPrompt?.id) {
+            const updatedEval = await getEvaluationForRow(rowId, currentPrompt.id);
+            if (updatedEval) {
+              setEvaluations(prev => ({
+                ...prev,
+                [rowId]: updatedEval,
+              }));
+              setLocalRowData(prev => ({
+                ...prev,
+                [rowId]: {
+                  ...prev[rowId],
+                  annotation: updatedEval.annotation ?? null,
+                  feedback: updatedEval.feedback ?? "",
+                  output: updatedEval.output ?? "",
+                },
+              }));
+            }
           }
         } catch (err) {
           console.error('Error updating feedback:', err);
@@ -897,9 +908,12 @@ export default function DataTable({
       setRunningRows(prev => new Set(prev).add(rowId));
     });
     
+    if (!currentPrompt?.id) {
+      return;
+    }
     try {
       // Clear output, annotation, and feedback before running
-      await updateEvaluation(rowId, "", null, null);
+      await updateEvaluation(rowId, currentPrompt.id, "", null, null);
       
       // Update local state optimistically using startTransition to prevent flickering
       startTransition(() => {
@@ -946,9 +960,12 @@ export default function DataTable({
   const handleClearOutput = async (rowId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     
+    if (!currentPrompt?.id) {
+      return;
+    }
     try {
       // Clear the output, annotation, and feedback in the database
-      const updatedEval = await updateEvaluation(rowId, "", null, null);
+      const updatedEval = await updateEvaluation(rowId, currentPrompt.id, "", null, null);
       
       // Ensure annotation and feedback are explicitly null
       const clearedEval = {

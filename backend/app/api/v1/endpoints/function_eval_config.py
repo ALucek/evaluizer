@@ -142,13 +142,15 @@ async def delete_function_eval_config(
 @router.get("/results/csv/{csv_id}", response_model=List[FunctionEvalResultResponse])
 async def get_function_eval_results_for_csv(
     csv_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> List[FunctionEvalResultResponse]:
-    """Get all function eval results for a CSV file"""
+    """Get all function eval results for a CSV file and prompt"""
     get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     results = db.query(FunctionEvalResult).filter(
-        FunctionEvalResult.csv_file_id == csv_id
+        FunctionEvalResult.csv_file_id == csv_id,
+        FunctionEvalResult.prompt_id == prompt_id
     ).all()
     
     return results
@@ -181,9 +183,10 @@ async def run_function_eval(
     if not row_data:
         raise HTTPException(status_code=400, detail="Invalid row data format")
     
-    # Get evaluation output for this row (if exists)
+    # Get evaluation output for this row and prompt (if exists)
     evaluation = db.query(Evaluation).filter(
-        Evaluation.csv_row_id == request.csv_row_id
+        Evaluation.csv_row_id == request.csv_row_id,
+        Evaluation.prompt_id == request.prompt_id
     ).first()
     
     output = None
@@ -208,11 +211,16 @@ async def run_function_eval(
     score = float(result_dict["score"])
     details = result_dict.get("details")
     
+    # Verify prompt exists
+    from app.models.prompt import Prompt
+    get_or_404(db, Prompt, request.prompt_id, "Prompt not found")
+    
     # Get or create function eval result (upsert)
     result = db.query(FunctionEvalResult).filter(
         and_(
             FunctionEvalResult.config_id == config.id,
-            FunctionEvalResult.csv_row_id == request.csv_row_id
+            FunctionEvalResult.csv_row_id == request.csv_row_id,
+            FunctionEvalResult.prompt_id == request.prompt_id
         )
     ).first()
     
@@ -226,6 +234,7 @@ async def run_function_eval(
             config_id=config.id,
             csv_file_id=csv_row.csv_file_id,
             csv_row_id=request.csv_row_id,
+            prompt_id=request.prompt_id,
             score=score,
             details=details
         )
@@ -244,13 +253,15 @@ async def run_function_eval(
 async def delete_function_eval_result(
     config_id: int,
     row_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete a function eval result for a specific config and row (idempotent)"""
+    """Delete a function eval result for a specific config, row, and prompt (idempotent)"""
     result = db.query(FunctionEvalResult).filter(
         and_(
             FunctionEvalResult.config_id == config_id,
-            FunctionEvalResult.csv_row_id == row_id
+            FunctionEvalResult.csv_row_id == row_id,
+            FunctionEvalResult.prompt_id == prompt_id
         )
     ).first()
     
@@ -258,7 +269,7 @@ async def delete_function_eval_result(
         db.delete(result)
         db.commit()
     
-    return {"message": "Function eval result deleted successfully", "config_id": config_id, "row_id": row_id}
+    return {"message": "Function eval result deleted successfully", "config_id": config_id, "row_id": row_id, "prompt_id": prompt_id}
 
 
 @router.delete("/results/config/{config_id}")

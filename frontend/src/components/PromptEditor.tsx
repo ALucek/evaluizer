@@ -16,7 +16,6 @@ interface PromptEditorProps {
   onVersionSelect: (versionId: number) => void;
   onDeletePrompt?: (promptId: number) => Promise<void>;
   onContentChange?: (systemPrompt: string, userMessageColumn: string | null) => void; // Callback to notify parent of content changes
-  onAutoSave?: (promptId: number, systemPrompt: string, userMessageColumn: string | null) => Promise<void>; // Callback for auto-saving
   llmConfig: LLMConfig;
   onLLMConfigChange: (config: LLMConfig) => void;
   onRunAll?: () => Promise<void>;
@@ -27,7 +26,7 @@ interface PromptEditorProps {
   isCancelling?: boolean;
 }
 
-export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, onAutoSave, llmConfig, onLLMConfigChange, onRunAll, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
+export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, llmConfig, onLLMConfigChange, onRunAll, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
   const [systemPrompt, setSystemPrompt] = useState(prompt?.system_prompt || '');
   const [userMessageColumn, setUserMessageColumn] = useState<string | null>(prompt?.user_message_column || null);
   const [promptName, setPromptName] = useState('');
@@ -38,7 +37,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   const [isLLMConfigExpanded, setIsLLMConfigExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [localLLMConfig, setLocalLLMConfig] = useState<LLMConfig>(llmConfig);
   // Local string states for number inputs to allow empty during editing
   const [tempTemperature, setTempTemperature] = useState<string>('');
@@ -67,6 +65,11 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   }, [prompt, allPromptNames.length]);
 
   useEffect(() => {
+    // Don't overwrite fields if we're in "new prompt" mode - let user type fresh content
+    if (showNewPromptForm) {
+      return;
+    }
+    
     const newSystemPrompt = prompt?.system_prompt || '';
     const newUserMessageColumn = prompt?.user_message_column || null;
     setSystemPrompt(newSystemPrompt);
@@ -79,22 +82,8 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     if (!prompt) {
       setPromptName('');
     }
-    // Clear any pending auto-save when prompt changes
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-      autoSaveTimeoutRef.current = null;
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prompt]); // Only depend on prompt, not onContentChange to avoid resetting on every render
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-  }, []);
+  }, [prompt, showNewPromptForm]); // Only depend on prompt and showNewPromptForm, not onContentChange to avoid resetting on every render
 
   // Sync localLLMConfig when llmConfig prop changes
   useEffect(() => {
@@ -172,26 +161,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
 
   const validation = validatePrompt();
 
-  // Auto-save function with debouncing
-  const debouncedAutoSave = useCallback((systemPrompt: string, userMessageColumn: string | null) => {
-    // Clear existing timeout
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
-
-    // Only auto-save if we have a prompt (not creating new) and onAutoSave is provided
-    if (prompt && onAutoSave) {
-      autoSaveTimeoutRef.current = setTimeout(async () => {
-        try {
-          await onAutoSave(prompt.id, systemPrompt, userMessageColumn);
-        } catch (err) {
-          console.error('Auto-save failed:', err);
-          // Don't show error to user for auto-save failures
-        }
-      }, 1500); // Wait 1.5 seconds after user stops typing
-    }
-  }, [prompt, onAutoSave]);
-
   const handleSystemPromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setSystemPrompt(newValue);
@@ -199,8 +168,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     if (onContentChange) {
       onContentChange(newValue, userMessageColumn);
     }
-    // Trigger auto-save with debouncing
-    debouncedAutoSave(newValue, userMessageColumn);
   };
 
   const handleUserMessageColumnChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -210,8 +177,28 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     if (onContentChange) {
       onContentChange(systemPrompt, newValue);
     }
-    // Trigger auto-save with debouncing
-    debouncedAutoSave(systemPrompt, newValue);
+  };
+
+  const handleDiscardChanges = () => {
+    if (!prompt) return;
+    
+    if (hasUnsavedChanges) {
+      if (!window.confirm('Are you sure you want to discard all unsaved changes?')) {
+        return;
+      }
+    }
+    
+    // Revert to saved prompt state
+    const savedSystemPrompt = prompt.system_prompt || '';
+    const savedUserMessageColumn = prompt.user_message_column || null;
+    setSystemPrompt(savedSystemPrompt);
+    setUserMessageColumn(savedUserMessageColumn);
+    setCommitMessage('');
+    
+    // Notify parent of content changes
+    if (onContentChange) {
+      onContentChange(savedSystemPrompt, savedUserMessageColumn);
+    }
   };
 
   const handleSave = async (createNewVersion: boolean) => {
@@ -456,9 +443,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 }}
                 style={{
                   padding: '0.5rem 1rem',
-                  backgroundColor: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-primary)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--accent-danger)',
+                  border: '2px solid var(--accent-danger)',
                   borderRadius: '0',
                   cursor: 'pointer',
                   fontSize: '0.75rem',
@@ -468,11 +455,12 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   textTransform: 'uppercase',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
-                  e.currentTarget.style.outlineOffset = '-2px';
+                  e.currentTarget.style.backgroundColor = 'var(--accent-danger)';
+                  e.currentTarget.style.color = 'white';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.outline = 'none';
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--accent-danger)';
                 }}
               >
                 CANCEL
@@ -1030,11 +1018,12 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         )}
       </div>
 
-      {/* Prompt Versioning Section - Collapsible */}
-      <div style={{
-        backgroundColor: 'var(--bg-elevated)',
-        overflow: 'hidden',
-      }}>
+      {/* Prompt Versioning Section - Collapsible (Hidden when creating new prompt) */}
+      {!showNewPromptForm && (
+        <div style={{
+          backgroundColor: 'var(--bg-elevated)',
+          overflow: 'hidden',
+        }}>
         <div
           onClick={() => setIsVersioningExpanded(!isVersioningExpanded)}
           style={{
@@ -1059,8 +1048,15 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             e.currentTarget.style.outline = 'none';
           }}
         >
-          <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            PROMPT VERSIONING
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              PROMPT VERSIONING
+            </div>
+            {hasUnsavedChanges && (
+              <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--accent-warning)', fontFamily: 'monospace', textTransform: 'uppercase' }}>
+                (UNSAVED)
+              </span>
+            )}
           </div>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '700' }}>
             {isVersioningExpanded ? 'v' : '>'}
@@ -1110,10 +1106,17 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   </select>
                   <button
                     onClick={() => {
+                      // Clear the editor fields to make it clear we're creating a new prompt
+                      setSystemPrompt('');
+                      setUserMessageColumn(null);
                       setShowNewPromptForm(true);
                       setSelectedPromptName(null);
                       setPromptName('');
-                      setValue('');
+                      setCommitMessage('');
+                      // Notify parent that content has changed
+                      if (onContentChange) {
+                        onContentChange('', null);
+                      }
                     }}
                     style={{
                       padding: '0.5rem 0.75rem',
@@ -1360,44 +1363,78 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     }}
                   />
                 </div>
-                <button
-                  onClick={() => handleSave(true)}
-                  disabled={isSaving || !validation.isValid}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: validation.isValid ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0',
-                    cursor: (isSaving || !validation.isValid) ? 'not-allowed' : 'pointer',
-                    fontSize: '0.75rem',
-                    fontWeight: '700',
-                    fontFamily: 'monospace',
-                    opacity: (isSaving || !validation.isValid) ? 0.4 : 1,
-                    transition: 'none',
-                    textTransform: 'uppercase',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSaving && validation.isValid) {
-                      e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
-                      e.currentTarget.style.outlineOffset = '-2px';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSaving && validation.isValid) {
-                      e.currentTarget.style.outline = 'none';
-                    }
-                  }}
-                >
-                  {isSaving ? 'COMMITTING...' : 'COMMIT CHANGES'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={handleDiscardChanges}
+                    disabled={isSaving || !hasUnsavedChanges}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: hasUnsavedChanges ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                      color: hasUnsavedChanges ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: '0',
+                      cursor: (isSaving || !hasUnsavedChanges) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      opacity: (isSaving || !hasUnsavedChanges) ? 0.4 : 1,
+                      transition: 'none',
+                      textTransform: 'uppercase',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSaving && hasUnsavedChanges) {
+                        e.currentTarget.style.outline = '2px solid var(--accent-danger)';
+                        e.currentTarget.style.outlineOffset = '-2px';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSaving && hasUnsavedChanges) {
+                        e.currentTarget.style.outline = 'none';
+                      }
+                    }}
+                  >
+                    DISCARD CHANGES
+                  </button>
+                  <button
+                    onClick={() => handleSave(true)}
+                    disabled={isSaving || !validation.isValid}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 1rem',
+                      backgroundColor: validation.isValid ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0',
+                      cursor: (isSaving || !validation.isValid) ? 'not-allowed' : 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      opacity: (isSaving || !validation.isValid) ? 0.4 : 1,
+                      transition: 'none',
+                      textTransform: 'uppercase',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSaving && validation.isValid) {
+                        e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                        e.currentTarget.style.outlineOffset = '-2px';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSaving && validation.isValid) {
+                        e.currentTarget.style.outline = 'none';
+                      }
+                    }}
+                  >
+                    {isSaving ? 'COMMITTING...' : 'COMMIT CHANGES'}
+                  </button>
+                </div>
               </div>
             )}
 
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
     </>
   );

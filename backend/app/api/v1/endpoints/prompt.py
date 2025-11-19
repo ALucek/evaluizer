@@ -45,7 +45,11 @@ async def create_prompt(
             csv_file_id=request.csv_file_id or parent_prompt.csv_file_id,
             parent_prompt_id=root_prompt_id,
             version=version,
-            commit_message=request.commit_message
+            commit_message=request.commit_message,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            concurrency=request.concurrency
         )
     else:
         # Create a new root prompt (version 1)
@@ -55,7 +59,11 @@ async def create_prompt(
             user_message_column=request.user_message_column,
             csv_file_id=request.csv_file_id,
             version=1,
-            commit_message=request.commit_message
+            commit_message=request.commit_message,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            concurrency=request.concurrency
         )
     
     try:
@@ -125,6 +133,18 @@ async def update_prompt(
     
     if request.commit_message is not None:
         prompt.commit_message = request.commit_message
+    
+    if request.model is not None:
+        prompt.model = request.model
+    
+    if request.temperature is not None:
+        prompt.temperature = request.temperature
+    
+    if request.max_tokens is not None:
+        prompt.max_tokens = request.max_tokens
+    
+    if request.concurrency is not None:
+        prompt.concurrency = request.concurrency
     
     try:
         db.commit()
@@ -203,7 +223,11 @@ async def create_prompt_version(
         csv_file_id=parent_prompt.csv_file_id,
         parent_prompt_id=root_prompt_id,
         version=version,
-        commit_message=request.commit_message
+        commit_message=request.commit_message,
+        model=request.model if request.model is not None else parent_prompt.model,
+        temperature=request.temperature if request.temperature is not None else parent_prompt.temperature,
+        max_tokens=request.max_tokens if request.max_tokens is not None else parent_prompt.max_tokens,
+        concurrency=request.concurrency if request.concurrency is not None else parent_prompt.concurrency
     )
     
     try:

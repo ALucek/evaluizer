@@ -53,12 +53,14 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 
 
+Visualizing the scores somewhat with each of these? some way of comparing?
+
+docker setup
 
 
-- Some unique way to attach scores and views to prompts so u can evaluate when ran? Reinventing experiments from langsmith from first principles
-    - saving outputs and scores with a specific prompt in the view instead of having to rerun?
+Persisting errors visually (i.e. if I get an error and then something else happens it updates and removes it)
+
 - composite scoring
-- Persisting errors visually (i.e. if I get an error and then something else happens it updates and removes it)
 - better eval processing (actually queued and all not sequential)
 - overall metrics (summaries of averages)?
 - rubric?
@@ -72,3 +74,33 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 - shouldnt be able to edit the prompt or click the column buttons if running (espec run all)
 - gepa running is highlighted green
+
+
+Readme 
+
+Logo
+
+Title
+
+Summary
+
+Install
+
+Usage
+
+- Creating prompts
+- Prompt versioning and config
+- Visualizing
+- Annotating
+- Evals
+    - Making LLm as a judge evals
+    - making function evals
+- Optimizing 
+    - What is GEPA
+    - config and recs
+
+Todo/contributing
+
+Thanks to  
+
+License

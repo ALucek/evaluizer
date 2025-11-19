@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -16,6 +16,13 @@ class Prompt(Base):
     version = Column(Integer, default=1)  # Version number for this prompt
     commit_message = Column(Text, nullable=True)  # Update message (like git commit message)
     parent_prompt_id = Column(Integer, ForeignKey("prompts.id", ondelete="SET NULL"), nullable=True)  # Reference to parent prompt (for versioning)
+    
+    # LLM Configuration (saved with each prompt version)
+    model = Column(String, nullable=True)  # e.g., "gpt-4", "claude-3-5-sonnet-20241022"
+    temperature = Column(Float, nullable=True)  # 0.0 to 1.0
+    max_tokens = Column(Integer, nullable=True)  # Maximum tokens for response
+    concurrency = Column(Integer, nullable=True)  # Number of concurrent requests
+    
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     

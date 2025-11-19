@@ -140,13 +140,15 @@ async def delete_judge_config(
 @router.get("/results/csv/{csv_id}", response_model=List[JudgeResultResponse])
 async def get_judge_results_for_csv(
     csv_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> List[JudgeResultResponse]:
-    """Get all judge results for a CSV file"""
+    """Get all judge results for a CSV file and prompt"""
     get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
     results = db.query(JudgeResult).filter(
-        JudgeResult.csv_file_id == csv_id
+        JudgeResult.csv_file_id == csv_id,
+        JudgeResult.prompt_id == prompt_id
     ).all()
     
     return results
@@ -182,9 +184,10 @@ async def run_judge(
     if not row_data:
         raise HTTPException(status_code=400, detail="Invalid row data format")
     
-    # Get evaluation output for this row (if exists) and add it to row_data as "Output"
+    # Get evaluation output for this row and prompt (if exists) and add it to row_data as "Output"
     evaluation = db.query(Evaluation).filter(
-        Evaluation.csv_row_id == request.csv_row_id
+        Evaluation.csv_row_id == request.csv_row_id,
+        Evaluation.prompt_id == request.prompt_id
     ).first()
     
     if evaluation and evaluation.output:
@@ -256,11 +259,16 @@ async def run_judge(
             detail=f"Failed to get valid LLM output after {max_retries} attempts"
         )
     
+    # Verify prompt exists
+    from app.models.prompt import Prompt
+    get_or_404(db, Prompt, request.prompt_id, "Prompt not found")
+    
     # Get or create judge result (upsert)
     result = db.query(JudgeResult).filter(
         and_(
             JudgeResult.config_id == config.id,
-            JudgeResult.csv_row_id == request.csv_row_id
+            JudgeResult.csv_row_id == request.csv_row_id,
+            JudgeResult.prompt_id == request.prompt_id
         )
     ).first()
     
@@ -274,6 +282,7 @@ async def run_judge(
             config_id=config.id,
             csv_file_id=csv_row.csv_file_id,
             csv_row_id=request.csv_row_id,
+            prompt_id=request.prompt_id,
             score=score,
             raw_output=raw_output
         )
@@ -292,13 +301,15 @@ async def run_judge(
 async def delete_judge_result(
     config_id: int,
     row_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete a judge result for a specific config and row (idempotent - returns success even if result doesn't exist)"""
+    """Delete a judge result for a specific config, row, and prompt (idempotent - returns success even if result doesn't exist)"""
     result = db.query(JudgeResult).filter(
         and_(
             JudgeResult.config_id == config_id,
-            JudgeResult.csv_row_id == row_id
+            JudgeResult.csv_row_id == row_id,
+            JudgeResult.prompt_id == prompt_id
         )
     ).first()
     
@@ -306,7 +317,7 @@ async def delete_judge_result(
         db.delete(result)
         db.commit()
     
-    return {"message": "Judge result deleted successfully", "config_id": config_id, "row_id": row_id}
+    return {"message": "Judge result deleted successfully", "config_id": config_id, "row_id": row_id, "prompt_id": prompt_id}
 
 
 @router.delete("/results/config/{config_id}")

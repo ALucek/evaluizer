@@ -264,17 +264,24 @@ async def rename_column(
 @router.get("/{csv_id}/export")
 async def export_csv_with_evaluations(
     csv_id: int, 
-    prompt_id: Optional[int] = None,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> StreamingResponse:
     """Export CSV file with all evaluation data (output, annotation, feedback), judge scores, and function eval scores, plus prompt as a ZIP file"""
     csv_file = get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
+    # Get prompt
+    prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
+    prompt_content = prompt.system_prompt if prompt else ""
+    
     # Get all rows
     rows = db.query(CSVRow).filter(CSVRow.csv_file_id == csv_id).order_by(CSVRow.id).all()
     
-    # Get all evaluations for this CSV file
-    evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
+    # Get all evaluations for this CSV file and prompt
+    evaluations = db.query(Evaluation).filter(
+        Evaluation.csv_file_id == csv_id,
+        Evaluation.prompt_id == prompt_id
+    ).all()
     eval_map = {eval.csv_row_id: eval for eval in evaluations}
     
     # Get all judge configs for this CSV file (sorted by creation date, oldest first)
@@ -282,9 +289,10 @@ async def export_csv_with_evaluations(
         JudgeConfig.csv_file_id == csv_id
     ).order_by(JudgeConfig.created_at).all()
     
-    # Get all judge results for this CSV file
+    # Get all judge results for this CSV file and prompt
     judge_results = db.query(JudgeResult).filter(
-        JudgeResult.csv_file_id == csv_id
+        JudgeResult.csv_file_id == csv_id,
+        JudgeResult.prompt_id == prompt_id
     ).all()
     
     # Build map of scores by row_id and config_id for quick lookup
@@ -299,9 +307,10 @@ async def export_csv_with_evaluations(
         FunctionEvalConfig.csv_file_id == csv_id
     ).order_by(FunctionEvalConfig.created_at).all()
     
-    # Get all function eval results for this CSV file
+    # Get all function eval results for this CSV file and prompt
     function_eval_results = db.query(FunctionEvalResult).filter(
-        FunctionEvalResult.csv_file_id == csv_id
+        FunctionEvalResult.csv_file_id == csv_id,
+        FunctionEvalResult.prompt_id == prompt_id
     ).all()
     
     # Build map of function eval scores by row_id and config_id for quick lookup
@@ -310,14 +319,6 @@ async def export_csv_with_evaluations(
         if result.csv_row_id not in function_scores_by_row_and_config:
             function_scores_by_row_and_config[result.csv_row_id] = {}
         function_scores_by_row_and_config[result.csv_row_id][result.config_id] = result.score
-    
-    # Get prompt - use provided prompt_id if available, otherwise get first prompt for CSV file
-    if prompt_id:
-        prompt = get_or_404(db, Prompt, prompt_id, "Prompt not found")
-    else:
-        prompt = db.query(Prompt).filter(Prompt.csv_file_id == csv_id).first()
-    
-    prompt_content = prompt.system_prompt if prompt else ""
     
     # Get original columns
     original_columns = parse_json_safe(csv_file.columns, [])

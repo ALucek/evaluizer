@@ -24,15 +24,23 @@ async def create_evaluation(
     # Verify CSV row exists
     csv_row = get_or_404(db, CSVRow, request.csv_row_id, "CSV row not found")
     
+    # Verify prompt exists
+    from app.models.prompt import Prompt
+    get_or_404(db, Prompt, request.prompt_id, "Prompt not found")
+    
     # Check if evaluation already exists
-    existing = db.query(Evaluation).filter(Evaluation.csv_row_id == request.csv_row_id).first()
+    existing = db.query(Evaluation).filter(
+        Evaluation.csv_row_id == request.csv_row_id,
+        Evaluation.prompt_id == request.prompt_id
+    ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Evaluation already exists for this row")
+        raise HTTPException(status_code=400, detail="Evaluation already exists for this row and prompt")
     
     try:
         evaluation = Evaluation(
             csv_file_id=csv_row.csv_file_id,
             csv_row_id=request.csv_row_id,
+            prompt_id=request.prompt_id,
             output=request.output,
             annotation=request.annotation,
             feedback=request.feedback
@@ -50,25 +58,33 @@ async def create_evaluation(
 
 @router.get("/csv/{csv_id}", response_model=List[EvaluationResponse])
 async def get_evaluations_for_csv(
-    csv_id: int, 
+    csv_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> List[EvaluationResponse]:
-    """Get all evaluations for a CSV file"""
+    """Get all evaluations for a CSV file and prompt"""
     get_or_404(db, CSVFile, csv_id, "CSV file not found")
     
-    evaluations = db.query(Evaluation).filter(Evaluation.csv_file_id == csv_id).all()
+    evaluations = db.query(Evaluation).filter(
+        Evaluation.csv_file_id == csv_id,
+        Evaluation.prompt_id == prompt_id
+    ).all()
     return evaluations
 
 
 @router.get("/row/{row_id}", response_model=EvaluationResponse)
 async def get_evaluation_for_row(
-    row_id: int, 
+    row_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> EvaluationResponse:
-    """Get evaluation for a specific CSV row"""
-    evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
+    """Get evaluation for a specific CSV row and prompt"""
+    evaluation = db.query(Evaluation).filter(
+        Evaluation.csv_row_id == row_id,
+        Evaluation.prompt_id == prompt_id
+    ).first()
     if not evaluation:
-        raise HTTPException(status_code=404, detail="Evaluation not found for this row")
+        raise HTTPException(status_code=404, detail="Evaluation not found for this row and prompt")
     
     return evaluation
 
@@ -79,8 +95,15 @@ async def update_evaluation(
     request: UpdateEvaluationRequest,
     db: Session = Depends(get_db)
 ) -> EvaluationResponse:
-    """Update evaluation for a specific CSV row (creates if doesn't exist)"""
-    evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
+    """Update evaluation for a specific CSV row and prompt (creates if doesn't exist)"""
+    # Verify prompt exists
+    from app.models.prompt import Prompt
+    get_or_404(db, Prompt, request.prompt_id, "Prompt not found")
+    
+    evaluation = db.query(Evaluation).filter(
+        Evaluation.csv_row_id == row_id,
+        Evaluation.prompt_id == request.prompt_id
+    ).first()
     
     if not evaluation:
         # Create evaluation if it doesn't exist
@@ -89,6 +112,7 @@ async def update_evaluation(
         evaluation = Evaluation(
             csv_file_id=csv_row.csv_file_id,
             csv_row_id=row_id,
+            prompt_id=request.prompt_id,
             output=request.output,
             annotation=request.annotation,
             feedback=request.feedback
@@ -112,16 +136,20 @@ async def update_evaluation(
 
 @router.delete("/row/{row_id}")
 async def delete_evaluation(
-    row_id: int, 
+    row_id: int,
+    prompt_id: int,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete evaluation for a specific CSV row"""
-    evaluation = db.query(Evaluation).filter(Evaluation.csv_row_id == row_id).first()
+    """Delete evaluation for a specific CSV row and prompt"""
+    evaluation = db.query(Evaluation).filter(
+        Evaluation.csv_row_id == row_id,
+        Evaluation.prompt_id == prompt_id
+    ).first()
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
     
     db.delete(evaluation)
     db.commit()
     
-    return {"message": "Evaluation deleted successfully", "row_id": row_id}
+    return {"message": "Evaluation deleted successfully", "row_id": row_id, "prompt_id": prompt_id}
 

@@ -96,6 +96,7 @@ class JudgeResultResponse(BaseModel):
     config_id: int
     csv_file_id: int
     csv_row_id: int
+    prompt_id: int
     score: float
     raw_output: Optional[str] = None
     created_at: datetime
@@ -108,4 +109,5 @@ class JudgeResultResponse(BaseModel):
 class JudgeRunRequest(BaseModel):
     config_id: int
     csv_row_id: int
+    prompt_id: int
 

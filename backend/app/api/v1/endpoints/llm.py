@@ -83,13 +83,15 @@ async def run_prompt(
     
     # Get or create evaluation
     evaluation = db.query(Evaluation).filter(
-        Evaluation.csv_row_id == request.csv_row_id
+        Evaluation.csv_row_id == request.csv_row_id,
+        Evaluation.prompt_id == request.prompt_id
     ).first()
     
     if not evaluation:
         evaluation = Evaluation(
             csv_file_id=csv_row.csv_file_id,
             csv_row_id=request.csv_row_id,
+            prompt_id=request.prompt_id,
             output="",
         )
         db.add(evaluation)
