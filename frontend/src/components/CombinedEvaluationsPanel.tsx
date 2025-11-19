@@ -1454,8 +1454,8 @@ export default function CombinedEvaluationsPanel({
         </div>
       )}
 
-      {/* Run All Evals and Clear All Buttons */}
-      {(judgeConfigs.length > 0 || functionEvalConfigs.length > 0) && (
+      {/* Run All Evals and Clear All Buttons - Hide when creating new evaluation */}
+      {(judgeConfigs.length > 0 || functionEvalConfigs.length > 0) && !showNewJudgeForm && !showNewFunctionForm && (
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {(onRunJudgeForAllRows || onRunFunctionEvalForAllRows) && (
             <button
