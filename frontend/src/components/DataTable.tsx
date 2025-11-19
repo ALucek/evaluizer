@@ -10,6 +10,7 @@ interface DataTableProps {
   currentPrompt?: Prompt | null;
   llmConfig?: LLMConfig;
   onRunPrompt?: (rowIds: number[]) => void;
+  isRunning?: boolean;
   isRunningAll?: boolean;
   latestEvaluation?: Evaluation | null;
   clearAllOutputs?: boolean;
@@ -38,6 +39,7 @@ export default function DataTable({
   currentPrompt,
   llmConfig,
   onRunPrompt,
+  isRunning = false,
   isRunningAll = false,
   latestEvaluation,
   clearAllOutputs = false,
@@ -1678,26 +1680,32 @@ export default function DataTable({
                             >
                               <button
                                 onClick={(e) => handleMenuToggle(column, e)}
+                                disabled={isRunning || isRunningAll}
                                 style={{
                                   padding: '0.25rem 0.5rem',
                                   backgroundColor: 'transparent',
                                   border: 'none',
-                                  cursor: 'pointer',
+                                  cursor: (isRunning || isRunningAll) ? 'not-allowed' : 'pointer',
                                   fontSize: '1rem',
-                                  color: 'var(--text-tertiary)',
+                                  color: (isRunning || isRunningAll) ? 'var(--text-disabled)' : 'var(--text-tertiary)',
                                   borderRadius: '0',
                                   lineHeight: '1',
                                   transition: 'none',
                                   fontWeight: '700',
+                                  opacity: (isRunning || isRunningAll) ? 0.4 : 1,
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.outline = '1px solid var(--accent-primary)';
-                                  e.currentTarget.style.outlineOffset = '-1px';
-                                  e.currentTarget.style.color = 'var(--text-primary)';
+                                  if (!isRunning && !isRunningAll) {
+                                    e.currentTarget.style.outline = '1px solid var(--accent-primary)';
+                                    e.currentTarget.style.outlineOffset = '-1px';
+                                    e.currentTarget.style.color = 'var(--text-primary)';
+                                  }
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.outline = 'none';
-                                  e.currentTarget.style.color = 'var(--text-tertiary)';
+                                  if (!isRunning && !isRunningAll) {
+                                    e.currentTarget.style.outline = 'none';
+                                    e.currentTarget.style.color = 'var(--text-tertiary)';
+                                  }
                                 }}
                               >
                                 ...

@@ -13,6 +13,7 @@ interface OptimizerPanelProps {
   latestFunctionEvalResult?: FunctionEvalResult | null;
   prompts?: Prompt[];
   onGepaRunComplete?: (newPromptId: number) => void;
+  onGepaRunningChange?: (isRunning: boolean) => void;
 }
 
 export default function OptimizerPanel({
@@ -27,6 +28,7 @@ export default function OptimizerPanel({
   latestFunctionEvalResult,
   prompts = [],
   onGepaRunComplete,
+  onGepaRunningChange,
 }: OptimizerPanelProps) {
   // State for thresholds (loaded from backend)
   const [humanAnnotationThreshold, setHumanAnnotationThreshold] = useState<number | null>(null);
@@ -86,6 +88,13 @@ export default function OptimizerPanel({
 
     loadGepaConfigs();
   }, [csvFileId]);
+
+  // Notify parent when GEPA running state changes
+  useEffect(() => {
+    if (onGepaRunningChange) {
+      onGepaRunningChange(isRunningGepa !== null);
+    }
+  }, [isRunningGepa, onGepaRunningChange]);
 
   // Load metrics from backend when csvFileId changes
   useEffect(() => {
@@ -616,7 +625,7 @@ export default function OptimizerPanel({
                 }, 500);
               }}
               placeholder="-"
-              disabled={isLoadingMetrics}
+              disabled={isLoadingMetrics || isRunningGepa !== null}
               style={{
                 width: '90px',
                 padding: '0.5rem 0.5rem',
@@ -715,7 +724,7 @@ export default function OptimizerPanel({
                   }, 500);
                 }}
                 placeholder="-"
-                disabled={isLoadingMetrics}
+                disabled={isLoadingMetrics || isRunningGepa !== null}
                 style={{
                   width: '90px',
                   padding: '0.5rem 0.5rem',
@@ -815,7 +824,7 @@ export default function OptimizerPanel({
                   }, 500);
                 }}
                 placeholder="-"
-                disabled={isLoadingMetrics}
+                disabled={isLoadingMetrics || isRunningGepa !== null}
                 style={{
                   width: '90px',
                   padding: '0.5rem 0.5rem',

@@ -117,7 +117,17 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   // Check if there are unsaved changes
   const currentSystemPrompt = prompt?.system_prompt || '';
   const currentUserMessageColumn = prompt?.user_message_column || null;
-  const hasUnsavedChanges = prompt && (systemPrompt !== currentSystemPrompt || userMessageColumn !== currentUserMessageColumn);
+  const hasPromptContentChanges = prompt && (systemPrompt !== currentSystemPrompt || userMessageColumn !== currentUserMessageColumn);
+  
+  // Check if LLM config has changed
+  const hasLLMConfigChanges = prompt && (
+    localLLMConfig.model !== (prompt.model || llmConfig.model) ||
+    localLLMConfig.temperature !== (prompt.temperature ?? llmConfig.temperature) ||
+    localLLMConfig.maxTokens !== (prompt.max_tokens ?? llmConfig.maxTokens) ||
+    localLLMConfig.concurrency !== (prompt.concurrency ?? llmConfig.concurrency)
+  );
+  
+  const hasUnsavedChanges = hasPromptContentChanges || hasLLMConfigChanges;
 
   // Get versions for selected prompt
   const selectedPromptVersions = selectedPromptName && groupedPrompts[selectedPromptName]
@@ -293,25 +303,31 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               <button
                 key={col}
                 onClick={() => insertVariable(col)}
+                disabled={isRunning}
                 style={{
                   padding: '0.25rem 0.5rem',
-                  backgroundColor: 'var(--bg-secondary)',
+                  backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                   border: '1px solid var(--border-primary)',
                   borderRadius: '0',
-                  cursor: 'pointer',
+                  cursor: isRunning ? 'not-allowed' : 'pointer',
                   fontSize: '0.75rem',
-                  color: 'var(--text-primary)',
+                  color: isRunning ? 'var(--text-tertiary)' : 'var(--text-primary)',
                   fontWeight: '700',
                   fontFamily: 'monospace',
                   transition: 'none',
                   textTransform: 'uppercase',
+                  opacity: isRunning ? 0.6 : 1,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.outline = '2px solid var(--accent-primary)';
-                  e.currentTarget.style.outlineOffset = '-2px';
+                  if (!isRunning) {
+                    e.currentTarget.style.outline = '2px solid var(--accent-primary)';
+                    e.currentTarget.style.outlineOffset = '-2px';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.outline = 'none';
+                  if (!isRunning) {
+                    e.currentTarget.style.outline = 'none';
+                  }
                 }}
               >
                 {col}
@@ -326,6 +342,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         ref={textareaRef}
         value={systemPrompt}
         onChange={handleSystemPromptChange}
+        disabled={isRunning}
         placeholder="ENTER YOUR SYSTEM PROMPT HERE...&#10;EXAMPLE: You are a helpful assistant. Use the following context: {{CONTEXT}}"
         style={{
           width: '100%',
@@ -339,13 +356,17 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
           boxSizing: 'border-box',
           resize: 'vertical',
           outline: 'none',
-          backgroundColor: 'var(--bg-secondary)',
+          backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
           color: 'var(--text-primary)',
           fontWeight: '500',
           transition: 'none',
+          cursor: isRunning ? 'not-allowed' : 'text',
+          opacity: isRunning ? 0.6 : 1,
         }}
         onFocus={(e) => {
-          e.currentTarget.style.borderColor = 'var(--accent-primary)';
+          if (!isRunning) {
+            e.currentTarget.style.borderColor = 'var(--accent-primary)';
+          }
         }}
         onBlur={(e) => {
           e.currentTarget.style.borderColor = 'var(--border-primary)';
@@ -406,6 +427,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 type="text"
                 value={promptName}
                 onChange={(e) => setPromptName(e.target.value)}
+                disabled={isRunning}
                 placeholder="E.G., MAIN PROMPT, EXPERIMENT A..."
                 style={{
                   width: '100%',
@@ -414,14 +436,18 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   borderRadius: '0',
                   fontSize: '0.8125rem',
                   boxSizing: 'border-box',
-                  backgroundColor: 'var(--bg-secondary)',
+                  backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                   color: 'var(--text-primary)',
                   fontFamily: 'monospace',
                   fontWeight: '600',
                   transition: 'none',
+                  cursor: isRunning ? 'not-allowed' : 'text',
+                  opacity: isRunning ? 0.6 : 1,
                 }}
                 onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                  if (!isRunning) {
+                    e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                  }
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.borderColor = 'var(--border-primary)';
@@ -468,30 +494,30 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             )}
             <button
               onClick={() => handleSave(false)}
-              disabled={isSaving || !validation.isValid || !promptName.trim()}
+              disabled={isSaving || !validation.isValid || !promptName.trim() || isRunning}
               style={{
                 flex: 1,
                 padding: '0.5rem 1rem',
-                backgroundColor: (validation.isValid && promptName.trim()) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                backgroundColor: (validation.isValid && promptName.trim() && !isRunning) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '0',
-                cursor: (isSaving || !validation.isValid || !promptName.trim()) ? 'not-allowed' : 'pointer',
+                cursor: (isSaving || !validation.isValid || !promptName.trim() || isRunning) ? 'not-allowed' : 'pointer',
                 fontSize: '0.75rem',
                 fontWeight: '700',
                 fontFamily: 'monospace',
-                opacity: (isSaving || !validation.isValid || !promptName.trim()) ? 0.4 : 1,
+                opacity: (isSaving || !validation.isValid || !promptName.trim() || isRunning) ? 0.4 : 1,
                 transition: 'none',
                 textTransform: 'uppercase',
               }}
               onMouseEnter={(e) => {
-                if (!isSaving && validation.isValid && promptName.trim()) {
+                if (!isSaving && validation.isValid && promptName.trim() && !isRunning) {
                   e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
                   e.currentTarget.style.outlineOffset = '-2px';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!isSaving && validation.isValid && promptName.trim()) {
+                if (!isSaving && validation.isValid && promptName.trim() && !isRunning) {
                   e.currentTarget.style.outline = 'none';
                 }
               }}
@@ -542,45 +568,47 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         </div>
       )}
 
-      {/* Run All / Clear All Buttons / Cancel Button */}
-      {isRunningAll && onCancel ? (
-        <button
-          onClick={() => {
-            if (onCancel) {
-              onCancel();
-            }
-          }}
-          disabled={isCancelling}
-          style={{
-            width: '100%',
-            padding: '0.5rem 1rem',
-            backgroundColor: isCancelling ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0',
-            cursor: isCancelling ? 'not-allowed' : 'pointer',
-            fontSize: '0.75rem',
-            fontWeight: '700',
-            fontFamily: 'monospace',
-            transition: 'none',
-            opacity: isCancelling ? 0.5 : 1,
-            textTransform: 'uppercase',
-          }}
-          onMouseEnter={(e) => {
-            if (!isCancelling) {
-              e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
-              e.currentTarget.style.outlineOffset = '-2px';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isCancelling) {
-              e.currentTarget.style.outline = 'none';
-            }
-          }}
-        >
-          {isCancelling ? 'CANCELLING...' : 'CANCEL RUNNING'}
-        </button>
-      ) : (onRunAll || onClearAllOutputs) && (
+      {/* Run All / Clear All Buttons / Cancel Button - Only show when a prompt exists and not creating a new one */}
+      {prompt && !showNewPromptForm && (
+        <>
+          {isRunningAll && onCancel ? (
+            <button
+              onClick={() => {
+                if (onCancel) {
+                  onCancel();
+                }
+              }}
+              disabled={isCancelling}
+              style={{
+                width: '100%',
+                padding: '0.5rem 1rem',
+                backgroundColor: isCancelling ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0',
+                cursor: isCancelling ? 'not-allowed' : 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                opacity: isCancelling ? 0.5 : 1,
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={(e) => {
+                if (!isCancelling) {
+                  e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isCancelling) {
+                  e.currentTarget.style.outline = 'none';
+                }
+              }}
+            >
+              {isCancelling ? 'CANCELLING...' : 'CANCEL RUNNING'}
+            </button>
+          ) : (onRunAll || onClearAllOutputs) && (
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {onRunAll && (
             <button
@@ -669,6 +697,8 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
             </button>
           )}
         </div>
+          )}
+        </>
       )}
 
       {/* LLM Configuration Section - Collapsible */}
@@ -1084,18 +1114,20 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         onVersionSelect(latestVersion.id);
                       }
                     }}
+                    disabled={isRunning}
                     style={{
                       flex: 1,
                       padding: '0.5rem 0.75rem',
                       border: '1px solid var(--border-primary)',
                       borderRadius: '0',
                       fontSize: '0.8125rem',
-                      backgroundColor: 'var(--bg-secondary)',
+                      backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                       color: 'var(--text-primary)',
                       fontFamily: 'monospace',
                       fontWeight: '600',
-                      cursor: 'pointer',
+                      cursor: isRunning ? 'not-allowed' : 'pointer',
                       minWidth: '150px',
+                      opacity: isRunning ? 0.6 : 1,
                     }}
                   >
                     {allPromptNames.map((name) => (
@@ -1118,13 +1150,14 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         onContentChange('', null);
                       }
                     }}
+                    disabled={isRunning}
                     style={{
                       padding: '0.5rem 0.75rem',
-                      backgroundColor: 'var(--accent-success)',
-                      color: '#000000',
+                      backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--accent-success)',
+                      color: isRunning ? 'var(--text-tertiary)' : '#000000',
                       border: 'none',
                       borderRadius: '0',
-                      cursor: 'pointer',
+                      cursor: isRunning ? 'not-allowed' : 'pointer',
                       fontSize: '1rem',
                       fontWeight: '700',
                       fontFamily: 'monospace',
@@ -1132,13 +1165,18 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       flexShrink: 0,
                       minWidth: '36px',
                       transition: 'none',
+                      opacity: isRunning ? 0.6 : 1,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
-                      e.currentTarget.style.outlineOffset = '-2px';
+                      if (!isRunning) {
+                        e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                        e.currentTarget.style.outlineOffset = '-2px';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.outline = 'none';
+                      if (!isRunning) {
+                        e.currentTarget.style.outline = 'none';
+                      }
                     }}
                     title="New Prompt"
                   >
@@ -1164,13 +1202,14 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                           }
                         }
                       }}
+                      disabled={isRunning}
                       style={{
                         padding: '0.5rem 0.75rem',
-                        backgroundColor: 'var(--accent-danger)',
-                        color: 'white',
+                        backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--accent-danger)',
+                        color: isRunning ? 'var(--text-tertiary)' : 'white',
                         border: 'none',
                         borderRadius: '0',
-                        cursor: 'pointer',
+                        cursor: isRunning ? 'not-allowed' : 'pointer',
                         fontSize: '1rem',
                         fontWeight: '700',
                         fontFamily: 'monospace',
@@ -1178,13 +1217,18 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         flexShrink: 0,
                         minWidth: '36px',
                         transition: 'none',
+                        opacity: isRunning ? 0.6 : 1,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
-                        e.currentTarget.style.outlineOffset = '-2px';
+                        if (!isRunning) {
+                          e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
+                          e.currentTarget.style.outlineOffset = '-2px';
+                        }
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.outline = 'none';
+                        if (!isRunning) {
+                          e.currentTarget.style.outline = 'none';
+                        }
                       }}
                       title="Delete this prompt and all its versions"
                     >
@@ -1226,10 +1270,12 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '0.5rem',
-                        cursor: 'pointer',
+                        cursor: isRunning ? 'not-allowed' : 'pointer',
                         transition: 'none',
+                        opacity: isRunning ? 0.6 : 1,
                       }}
                       onClick={(e) => {
+                        if (isRunning) return;
                         // Clear outline on click
                         e.currentTarget.style.outline = 'none';
                         // If there are unsaved changes, warn the user
@@ -1241,7 +1287,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         onVersionSelect(v.id);
                       }}
                       onMouseEnter={(e) => {
-                        if (prompt?.id !== v.id) {
+                        if (prompt?.id !== v.id && !isRunning) {
                           e.currentTarget.style.outline = '2px solid var(--accent-primary)';
                           e.currentTarget.style.outlineOffset = '-2px';
                         }
@@ -1291,31 +1337,36 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                               await onDeletePrompt(v.id);
                             }
                           }}
+                          disabled={isRunning}
                           style={{
                             padding: '0.25rem 0.5rem',
-                            backgroundColor: prompt?.id === v.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                            color: prompt?.id === v.id ? 'white' : 'var(--accent-danger)',
-                            border: `1px solid ${prompt?.id === v.id ? 'rgba(255,255,255,0.3)' : 'var(--accent-danger)'}`,
+                            backgroundColor: isRunning ? 'var(--bg-tertiary)' : (prompt?.id === v.id ? 'rgba(255,255,255,0.2)' : 'transparent'),
+                            color: isRunning ? 'var(--text-tertiary)' : (prompt?.id === v.id ? 'white' : 'var(--accent-danger)'),
+                            border: `1px solid ${isRunning ? 'var(--border-primary)' : (prompt?.id === v.id ? 'rgba(255,255,255,0.3)' : 'var(--accent-danger)')}`,
                             borderRadius: '0',
-                            cursor: 'pointer',
+                            cursor: isRunning ? 'not-allowed' : 'pointer',
                             fontSize: '0.6875rem',
                             fontWeight: '700',
                             fontFamily: 'monospace',
                             whiteSpace: 'nowrap',
-                            opacity: 0.8,
+                            opacity: isRunning ? 0.4 : 0.8,
                             transition: 'none',
                             textTransform: 'uppercase',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.opacity = '1';
-                            e.currentTarget.style.outline = prompt?.id === v.id 
-                              ? '2px solid rgba(255, 255, 255, 0.8)' 
-                              : '2px solid var(--accent-danger)';
-                            e.currentTarget.style.outlineOffset = '-2px';
+                            if (!isRunning) {
+                              e.currentTarget.style.opacity = '1';
+                              e.currentTarget.style.outline = prompt?.id === v.id 
+                                ? '2px solid rgba(255, 255, 255, 0.8)' 
+                                : '2px solid var(--accent-danger)';
+                              e.currentTarget.style.outlineOffset = '-2px';
+                            }
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.opacity = '0.8';
-                            e.currentTarget.style.outline = 'none';
+                            if (!isRunning) {
+                              e.currentTarget.style.opacity = '0.8';
+                              e.currentTarget.style.outline = 'none';
+                            }
                           }}
                           title="Delete this version"
                         >
@@ -1340,6 +1391,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                     type="text"
                     value={commitMessage}
                     onChange={(e) => setCommitMessage(e.target.value)}
+                    disabled={isRunning}
                     placeholder="E.G., FIXED TYPO, IMPROVED CLARITY..."
                     style={{
                       width: '100%',
@@ -1349,14 +1401,18 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                       fontSize: '0.8125rem',
                       boxSizing: 'border-box',
                       marginBottom: '0.5rem',
-                      backgroundColor: 'var(--bg-secondary)',
+                      backgroundColor: isRunning ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                       color: 'var(--text-primary)',
                       fontFamily: 'monospace',
                       fontWeight: '600',
                       transition: 'none',
+                      cursor: isRunning ? 'not-allowed' : 'text',
+                      opacity: isRunning ? 0.6 : 1,
                     }}
                     onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                      if (!isRunning) {
+                        e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                      }
                     }}
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = 'var(--border-primary)';
@@ -1366,29 +1422,29 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     onClick={handleDiscardChanges}
-                    disabled={isSaving || !hasUnsavedChanges}
+                    disabled={isSaving || !hasUnsavedChanges || isRunning}
                     style={{
                       padding: '0.5rem 1rem',
-                      backgroundColor: hasUnsavedChanges ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
-                      color: hasUnsavedChanges ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      backgroundColor: (hasUnsavedChanges && !isRunning) ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                      color: (hasUnsavedChanges && !isRunning) ? 'var(--text-primary)' : 'var(--text-tertiary)',
                       border: '1px solid var(--border-primary)',
                       borderRadius: '0',
-                      cursor: (isSaving || !hasUnsavedChanges) ? 'not-allowed' : 'pointer',
+                      cursor: (isSaving || !hasUnsavedChanges || isRunning) ? 'not-allowed' : 'pointer',
                       fontSize: '0.75rem',
                       fontWeight: '700',
                       fontFamily: 'monospace',
-                      opacity: (isSaving || !hasUnsavedChanges) ? 0.4 : 1,
+                      opacity: (isSaving || !hasUnsavedChanges || isRunning) ? 0.4 : 1,
                       transition: 'none',
                       textTransform: 'uppercase',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSaving && hasUnsavedChanges) {
+                      if (!isSaving && hasUnsavedChanges && !isRunning) {
                         e.currentTarget.style.outline = '2px solid var(--accent-danger)';
                         e.currentTarget.style.outlineOffset = '-2px';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSaving && hasUnsavedChanges) {
+                      if (!isSaving && hasUnsavedChanges && !isRunning) {
                         e.currentTarget.style.outline = 'none';
                       }
                     }}
@@ -1397,30 +1453,30 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   </button>
                   <button
                     onClick={() => handleSave(true)}
-                    disabled={isSaving || !validation.isValid}
+                    disabled={isSaving || !validation.isValid || isRunning}
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
-                      backgroundColor: validation.isValid ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      backgroundColor: (validation.isValid && !isRunning) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                       color: 'white',
                       border: 'none',
                       borderRadius: '0',
-                      cursor: (isSaving || !validation.isValid) ? 'not-allowed' : 'pointer',
+                      cursor: (isSaving || !validation.isValid || isRunning) ? 'not-allowed' : 'pointer',
                       fontSize: '0.75rem',
                       fontWeight: '700',
                       fontFamily: 'monospace',
-                      opacity: (isSaving || !validation.isValid) ? 0.4 : 1,
+                      opacity: (isSaving || !validation.isValid || isRunning) ? 0.4 : 1,
                       transition: 'none',
                       textTransform: 'uppercase',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSaving && validation.isValid) {
+                      if (!isSaving && validation.isValid && !isRunning) {
                         e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
                         e.currentTarget.style.outlineOffset = '-2px';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSaving && validation.isValid) {
+                      if (!isSaving && validation.isValid && !isRunning) {
                         e.currentTarget.style.outline = 'none';
                       }
                     }}

@@ -35,6 +35,7 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRunningGepa, setIsRunningGepa] = useState(false);
   const [latestEvaluation, setLatestEvaluation] = useState<Evaluation | null>(null);
   const [clearAllOutputs, setClearAllOutputs] = useState(false);
   const cancellationRef = useRef<boolean>(false);
@@ -1266,7 +1267,7 @@ function App() {
                 onRunAll={handleRunAll}
                 onClearAllOutputs={handleClearAllOutputs}
                 onCancel={handleCancel}
-                isRunning={isRunning}
+                isRunning={isRunning || isRunningGepa}
                 isRunningAll={isRunningAll}
                 isCancelling={isCancelling}
               />
@@ -1288,6 +1289,7 @@ function App() {
                   await loadGroupedPrompts(selectedFileId!);
                   await handleVersionSelect(newPromptId);
                 }}
+                onGepaRunningChange={setIsRunningGepa}
               />
               
               {/* Combined Evaluations Panel */}
@@ -1402,6 +1404,7 @@ function App() {
                 currentPrompt={currentPrompt}
                 llmConfig={llmConfig}
                 onRunPrompt={handleRunPrompt}
+                isRunning={isRunning || isRunningGepa}
                 isRunningAll={isRunningAll}
                 latestEvaluation={latestEvaluation}
                 clearAllOutputs={clearAllOutputs}
