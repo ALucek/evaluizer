@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from sqlalchemy import and_
 
 from app.database import get_db
@@ -275,20 +275,30 @@ async def delete_function_eval_result(
 @router.delete("/results/config/{config_id}")
 async def delete_function_eval_results_for_config(
     config_id: int,
+    prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete all function eval results for a specific config"""
+    """Delete all function eval results for a specific config, optionally filtered by prompt_id"""
     get_or_404(db, FunctionEvalConfig, config_id, "Function eval config not found")
     
-    deleted_count = db.query(FunctionEvalResult).filter(
+    query = db.query(FunctionEvalResult).filter(
         FunctionEvalResult.config_id == config_id
-    ).delete()
+    )
+    
+    # If prompt_id is provided, only delete results for that prompt version
+    if prompt_id is not None:
+        from app.models.prompt import Prompt
+        get_or_404(db, Prompt, prompt_id, "Prompt not found")
+        query = query.filter(FunctionEvalResult.prompt_id == prompt_id)
+    
+    deleted_count = query.delete()
     
     db.commit()
     
     return {
         "message": f"Deleted {deleted_count} function eval result(s)",
         "config_id": config_id,
+        "prompt_id": prompt_id,
         "deleted_count": deleted_count
     }
 

@@ -113,13 +113,6 @@ class EvalsBackedAdapter:
             
             return output.strip()
         except Exception as e:
-            # Log the error for debugging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error in _generate_output: {str(e)}")
-            logger.error(f"System prompt: {system_prompt[:200] if system_prompt else 'None'}...")
-            logger.error(f"User message column: {user_message_column}")
-            logger.error(f"Row data keys: {list(row_data.keys()) if row_data else 'None'}")
             raise
     
     async def _evaluate_single_item(
@@ -272,12 +265,6 @@ class EvalsBackedAdapter:
                 all_feedback.append(feedback)
             if capture_traces and trajectory:
                 trajectories.append(trajectory)
-            
-            # Log first few results for debugging (especially if scores are 0)
-            if idx < 3 or score == 0.0:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"GEPA eval {idx}: score={score:.3f}, output_len={len(output) if output else 0}, feedback={feedback[:150] if feedback else 'None'}")
         
         # Update progress with final results
         avg_score = sum(scores) / len(scores) if scores else 0.0
@@ -455,44 +442,23 @@ async def run_gepa(
             display_progress_bar=False  # We handle progress ourselves
         )
         
-        # Debug: Log what's in the result object and get the optimized prompt
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"GEPA result object type: {type(result)}")
-        logger.info(f"GEPA result attributes: {dir(result)}")
-        
         # Try to get the best prompt from result.best_candidate
         # Also check result.candidate as a fallback (current candidate)
         best_prompt = ""
         if hasattr(result, 'best_candidate') and result.best_candidate:
             best_prompt = result.best_candidate.get("system_prompt", "")
-            logger.info(f"Got prompt from result.best_candidate, length: {len(best_prompt)}")
-            logger.info(f"Best candidate preview: {best_prompt[:200] if best_prompt else 'EMPTY'}...")
         
         # If best_candidate doesn't have it, try candidate (current/last candidate)
         if not best_prompt and hasattr(result, 'candidate') and result.candidate:
             best_prompt = result.candidate.get("system_prompt", "")
-            logger.info(f"Got prompt from result.candidate, length: {len(best_prompt)}")
-            logger.info(f"Candidate preview: {best_prompt[:200] if best_prompt else 'EMPTY'}...")
         
-        # If still no prompt, log the entire result structure for debugging
+        # If still no prompt, raise error
         if not best_prompt:
-            logger.error(f"Could not find system_prompt in result. Result: {result}")
-            logger.error(f"result.best_candidate: {getattr(result, 'best_candidate', 'N/A')}")
-            logger.error(f"result.candidate: {getattr(result, 'candidate', 'N/A')}")
             raise ValueError("GEPA optimization did not produce a valid prompt - could not find system_prompt in result")
         
         # Validate that we got a prompt
         if not best_prompt or not best_prompt.strip():
             raise ValueError("GEPA optimization did not produce a valid prompt")
-        
-        # Log comparison with seed prompt for debugging
-        if best_prompt.strip() == seed_prompt_content.strip():
-            logger.warning("GEPA optimization returned the same prompt as the seed. This may indicate the optimization didn't improve the prompt.")
-        else:
-            logger.info(f"GEPA optimization produced a different prompt (seed length: {len(seed_prompt_content)}, optimized length: {len(best_prompt)})")
-            logger.info(f"Seed prompt preview: {seed_prompt_content[:200]}...")
-            logger.info(f"Optimized prompt preview: {best_prompt[:200]}...")
         
         update_progress(
             config_id,
@@ -528,15 +494,6 @@ async def run_gepa(
     # best_prompt should already be validated and non-empty at this point
     optimized_content = best_prompt.strip()
     
-    # Final verification before saving
-    logger.info(f"About to save prompt version {version}. Content length: {len(optimized_content)}")
-    logger.info(f"Content preview (first 300 chars): {optimized_content[:300]}...")
-    
-    # Double-check we're not accidentally using the seed prompt
-    if optimized_content == seed_prompt_content.strip():
-        logger.warning("WARNING: Optimized prompt content matches seed prompt. GEPA may not have optimized the prompt.")
-        logger.warning("This is normal if GEPA found no improvements, but verify this is expected.")
-    
     new_prompt = Prompt(
         name=root_prompt.name,  # Inherit name from root prompt
         system_prompt=optimized_content,  # Save the optimized system prompt (NOT seed_prompt_content)
@@ -544,7 +501,7 @@ async def run_gepa(
         csv_file_id=csv_file_id,
         parent_prompt_id=root_prompt_id,
         version=version,
-        commit_message=f"GEPA optimized via {gepa_config.name}"
+        commit_message=f"GEPA optimized via {gepa_config.name} (eval score: {best_score:.3f})"
     )
     
     try:
@@ -553,30 +510,16 @@ async def run_gepa(
         db.refresh(new_prompt)
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to save prompt to database: {str(e)}")
-        logger.error(f"Error type: {type(e).__name__}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
         raise ValueError(f"Failed to save optimized prompt to database: {str(e)}")
     
     # Verify the content was saved correctly
     new_prompt_id = new_prompt.id
     saved_prompt = db.query(Prompt).filter(Prompt.id == new_prompt_id).first()
     if not saved_prompt:
-        logger.error(f"Failed to retrieve saved prompt with id {new_prompt_id}")
         raise ValueError("Failed to retrieve saved prompt from database")
     
-    logger.info(f"Saved prompt ID: {new_prompt_id}, Version: {version}")
-    logger.info(f"Saved content length: {len(saved_prompt.system_prompt)}")
-    logger.info(f"Saved content preview (first 300 chars): {saved_prompt.system_prompt[:300]}...")
-    
     if saved_prompt.system_prompt != optimized_content:
-        logger.error(f"Content mismatch! Expected length: {len(optimized_content)}, Saved length: {len(saved_prompt.system_prompt)}")
-        logger.error(f"Expected preview: {optimized_content[:300]}...")
-        logger.error(f"Saved preview: {saved_prompt.system_prompt[:300]}...")
         raise ValueError("Failed to save optimized prompt content correctly - content mismatch detected")
-    else:
-        logger.info("✓ Prompt content saved correctly and verified")
     
     # Mark as complete
     set_complete(

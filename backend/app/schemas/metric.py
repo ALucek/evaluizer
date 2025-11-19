@@ -1,6 +1,6 @@
 from pydantic import BaseModel, field_validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 
 class MetricResponse(BaseModel):
@@ -47,4 +47,18 @@ class UpdateMetricRequest(BaseModel):
         if not isinstance(v, (int, float)):
             raise ValueError('threshold must be a number')
         return float(v)
+
+
+class BestPromptInfo(BaseModel):
+    id: int
+    name: Optional[str]
+    version: int
+    average_score: float
+    result_count: int
+
+
+class BestPromptsResponse(BaseModel):
+    human_annotation: Optional[BestPromptInfo] = None
+    judge_configs: Dict[int, Optional[BestPromptInfo]]
+    function_eval_configs: Dict[int, Optional[BestPromptInfo]]
 

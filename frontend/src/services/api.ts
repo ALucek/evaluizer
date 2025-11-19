@@ -959,9 +959,12 @@ export async function deleteJudgeResult(configId: number, rowId: number, promptI
   }
 }
 
-export async function deleteJudgeResultsForConfig(configId: number): Promise<void> {
+export async function deleteJudgeResultsForConfig(configId: number, promptId?: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/judge/results/config/${configId}`, {
+    const url = promptId !== undefined
+      ? `${API_BASE_URL}/judge/results/config/${configId}?prompt_id=${promptId}`
+      : `${API_BASE_URL}/judge/results/config/${configId}`;
+    const response = await fetch(url, {
       method: 'DELETE',
     });
     
@@ -1212,9 +1215,12 @@ export async function deleteFunctionEvalResult(configId: number, rowId: number, 
   }
 }
 
-export async function deleteFunctionEvalResultsForConfig(configId: number): Promise<void> {
+export async function deleteFunctionEvalResultsForConfig(configId: number, promptId?: number): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/function-eval/results/config/${configId}`, {
+    const url = promptId !== undefined
+      ? `${API_BASE_URL}/function-eval/results/config/${configId}?prompt_id=${promptId}`
+      : `${API_BASE_URL}/function-eval/results/config/${configId}`;
+    const response = await fetch(url, {
       method: 'DELETE',
     });
     
@@ -1321,6 +1327,46 @@ export async function deleteMetric(metricId: number): Promise<void> {
       }
       throw new Error(errorMessage);
     }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');
+    }
+    throw error;
+  }
+}
+
+// Best prompt tracking types and API
+export interface BestPromptInfo {
+  id: number;
+  name: string | null;
+  version: number;
+  average_score: number;
+  result_count: number;
+}
+
+export interface BestPromptsResponse {
+  human_annotation?: BestPromptInfo | null;
+  judge_configs: Record<number, BestPromptInfo | null>;
+  function_eval_configs: Record<number, BestPromptInfo | null>;
+}
+
+export async function getBestPromptsForMetrics(csvFileId: number): Promise<BestPromptsResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/metrics/${csvFileId}/best-prompts`);
+    
+    if (!response.ok) {
+      let errorMessage = `Failed to get best prompts: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    return response.json();
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new Error('Cannot connect to backend server. Make sure the backend is running on http://localhost:8000');

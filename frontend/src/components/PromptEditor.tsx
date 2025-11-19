@@ -36,6 +36,7 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   const [isVersioningExpanded, setIsVersioningExpanded] = useState(false);
   const [isLLMConfigExpanded, setIsLLMConfigExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastSyncedPromptIdRef = useRef<number | null>(prompt?.id || null);
   const [isSaving, setIsSaving] = useState(false);
   const [localLLMConfig, setLocalLLMConfig] = useState<LLMConfig>(llmConfig);
   // Local string states for number inputs to allow empty during editing
@@ -72,6 +73,14 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
     
     const newSystemPrompt = prompt?.system_prompt || '';
     const newUserMessageColumn = prompt?.user_message_column || null;
+    
+    // Update ref immediately when prompt changes to prevent flash
+    const promptId = prompt?.id || null;
+    const isPromptChange = lastSyncedPromptIdRef.current !== promptId;
+    if (isPromptChange) {
+      lastSyncedPromptIdRef.current = promptId;
+    }
+    
     setSystemPrompt(newSystemPrompt);
     setUserMessageColumn(newUserMessageColumn);
     // Notify parent of content changes when prompt changes
@@ -115,12 +124,14 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
   };
 
   // Check if there are unsaved changes
+  // Only show unsaved changes if we're synced with the current prompt (not during a prompt change transition)
+  const isSyncedWithCurrentPrompt = lastSyncedPromptIdRef.current === (prompt?.id || null);
   const currentSystemPrompt = prompt?.system_prompt || '';
   const currentUserMessageColumn = prompt?.user_message_column || null;
-  const hasPromptContentChanges = prompt && (systemPrompt !== currentSystemPrompt || userMessageColumn !== currentUserMessageColumn);
+  const hasPromptContentChanges = isSyncedWithCurrentPrompt && prompt && (systemPrompt !== currentSystemPrompt || userMessageColumn !== currentUserMessageColumn);
   
   // Check if LLM config has changed
-  const hasLLMConfigChanges = prompt && (
+  const hasLLMConfigChanges = isSyncedWithCurrentPrompt && prompt && (
     localLLMConfig.model !== (prompt.model || llmConfig.model) ||
     localLLMConfig.temperature !== (prompt.temperature ?? llmConfig.temperature) ||
     localLLMConfig.maxTokens !== (prompt.max_tokens ?? llmConfig.maxTokens) ||
@@ -197,6 +208,9 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
         return;
       }
     }
+    
+    // Ensure ref is synced with current prompt
+    lastSyncedPromptIdRef.current = prompt.id;
     
     // Revert to saved prompt state
     const savedSystemPrompt = prompt.system_prompt || '';
@@ -1453,30 +1467,30 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                   </button>
                   <button
                     onClick={() => handleSave(true)}
-                    disabled={isSaving || !validation.isValid || isRunning}
+                    disabled={isSaving || !validation.isValid || !hasUnsavedChanges || isRunning}
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
-                      backgroundColor: (validation.isValid && !isRunning) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      backgroundColor: (validation.isValid && hasUnsavedChanges && !isRunning) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                       color: 'white',
                       border: 'none',
                       borderRadius: '0',
-                      cursor: (isSaving || !validation.isValid || isRunning) ? 'not-allowed' : 'pointer',
+                      cursor: (isSaving || !validation.isValid || !hasUnsavedChanges || isRunning) ? 'not-allowed' : 'pointer',
                       fontSize: '0.75rem',
                       fontWeight: '700',
                       fontFamily: 'monospace',
-                      opacity: (isSaving || !validation.isValid || isRunning) ? 0.4 : 1,
+                      opacity: (isSaving || !validation.isValid || !hasUnsavedChanges || isRunning) ? 0.4 : 1,
                       transition: 'none',
                       textTransform: 'uppercase',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSaving && validation.isValid && !isRunning) {
+                      if (!isSaving && validation.isValid && hasUnsavedChanges && !isRunning) {
                         e.currentTarget.style.outline = '2px solid rgba(255, 255, 255, 0.8)';
                         e.currentTarget.style.outlineOffset = '-2px';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSaving && validation.isValid && !isRunning) {
+                      if (!isSaving && validation.isValid && hasUnsavedChanges && !isRunning) {
                         e.currentTarget.style.outline = 'none';
                       }
                     }}

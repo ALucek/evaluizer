@@ -91,24 +91,58 @@ function App() {
     try {
       const prompts = await listPrompts(csvFileId, false); // Only get root prompts
       if (prompts.length > 0) {
-        const prompt = prompts[0]; // Use the first prompt for this CSV file
-        setCurrentPrompt(prompt);
+        // Try to restore saved prompt ID from localStorage
+        const savedPromptIdKey = `selectedPrompt_${csvFileId}`;
+        const savedPromptId = localStorage.getItem(savedPromptIdKey);
+        let promptToLoad = prompts[0]; // Default to first prompt
+        
+        if (savedPromptId) {
+          try {
+            const savedId = parseInt(savedPromptId, 10);
+            // Check if saved prompt exists in the list
+            const savedPrompt = prompts.find(p => p.id === savedId);
+            if (savedPrompt) {
+              promptToLoad = savedPrompt;
+            } else {
+              // Saved prompt not found, try to load it directly (might be a version)
+              try {
+                const loadedPrompt = await getPrompt(savedId);
+                // Verify it belongs to this CSV file
+                if (loadedPrompt.csv_file_id === csvFileId || loadedPrompt.csv_file_id === null) {
+                  promptToLoad = loadedPrompt;
+                }
+              } catch {
+                // Saved prompt doesn't exist, use default
+              }
+            }
+          } catch {
+            // Invalid saved ID, use default
+          }
+        }
+        
+        setCurrentPrompt(promptToLoad);
+        
+        // Save to localStorage
+        localStorage.setItem(`selectedPrompt_${csvFileId}`, promptToLoad.id.toString());
         
         // Load LLM config from the prompt if it exists
-        if (prompt.model || prompt.temperature !== null || prompt.max_tokens !== null || prompt.concurrency !== null) {
+        if (promptToLoad.model || promptToLoad.temperature !== null || promptToLoad.max_tokens !== null || promptToLoad.concurrency !== null) {
           setLlmConfig({
-            model: prompt.model || llmConfig.model,
-            temperature: prompt.temperature ?? llmConfig.temperature,
-            maxTokens: prompt.max_tokens ?? llmConfig.maxTokens,
-            concurrency: prompt.concurrency ?? llmConfig.concurrency,
+            model: promptToLoad.model || llmConfig.model,
+            temperature: promptToLoad.temperature ?? llmConfig.temperature,
+            maxTokens: promptToLoad.max_tokens ?? llmConfig.maxTokens,
+            concurrency: promptToLoad.concurrency ?? llmConfig.concurrency,
           });
         }
         
         // Load versions for this prompt
-        await loadPromptVersions(prompt.id);
+        const rootPromptId = promptToLoad.parent_prompt_id || promptToLoad.id;
+        await loadPromptVersions(rootPromptId);
       } else {
         setCurrentPrompt(null);
         setPromptVersions([]);
+        // Clear saved prompt for this file
+        localStorage.removeItem(`selectedPrompt_${csvFileId}`);
       }
     } catch (err) {
       // If prompt doesn't exist, that's fine
@@ -469,6 +503,12 @@ function App() {
       const selectedVersion = await getPrompt(versionId);
       setCurrentPrompt(selectedVersion);
       
+      // Save to localStorage
+      if (selectedFileId) {
+        const savedPromptIdKey = `selectedPrompt_${selectedFileId}`;
+        localStorage.setItem(savedPromptIdKey, selectedVersion.id.toString());
+      }
+      
       // Load LLM config from the prompt version if it exists
       if (selectedVersion.model || selectedVersion.temperature !== null || selectedVersion.max_tokens !== null || selectedVersion.concurrency !== null) {
         setLlmConfig({
@@ -682,29 +722,29 @@ function App() {
     const allRowIds = csvData.rows.map(row => row.id);
     
     // Clear all judge evaluation scores for all rows before running
-    if (judgeConfigs.length > 0) {
+    if (judgeConfigs.length > 0 && currentPrompt?.id) {
       await Promise.allSettled(
         judgeConfigs.map(config => 
-          deleteJudgeResultsForConfig(config.id).catch((err: any) => {
+          deleteJudgeResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
             console.error(`Error clearing judge results for config ${config.id}:`, err);
           })
         )
       );
       // Reload judge results to update UI
-      await loadJudgeResults(selectedFileId);
+      await loadJudgeResults(selectedFileId, currentPrompt.id);
     }
     
     // Clear all function evaluation scores for all rows before running
-    if (functionEvalConfigs.length > 0) {
+    if (functionEvalConfigs.length > 0 && currentPrompt?.id) {
       await Promise.allSettled(
         functionEvalConfigs.map(config => 
-          deleteFunctionEvalResultsForConfig(config.id).catch((err: any) => {
+          deleteFunctionEvalResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
             console.error(`Error clearing function eval results for config ${config.id}:`, err);
           })
         )
       );
       // Reload function eval results to update UI
-      await loadFunctionEvalResults(selectedFileId);
+      await loadFunctionEvalResults(selectedFileId, currentPrompt.id);
     }
     
     await handleRunPrompt(allRowIds, true);
@@ -741,26 +781,26 @@ function App() {
       if (judgeConfigs.length > 0) {
         await Promise.allSettled(
           judgeConfigs.map(config => 
-            deleteJudgeResultsForConfig(config.id).catch((err: any) => {
+            deleteJudgeResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
               console.error(`Error clearing judge results for config ${config.id}:`, err);
             })
           )
         );
         // Reload judge results to update UI
-        await loadJudgeResults(selectedFileId);
+        await loadJudgeResults(selectedFileId, currentPrompt.id);
       }
       
       // Clear all function evaluation scores for all rows
       if (functionEvalConfigs.length > 0) {
         await Promise.allSettled(
           functionEvalConfigs.map(config => 
-            deleteFunctionEvalResultsForConfig(config.id).catch((err: any) => {
+            deleteFunctionEvalResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
               console.error(`Error clearing function eval results for config ${config.id}:`, err);
             })
           )
         );
         // Reload function eval results to update UI
-        await loadFunctionEvalResults(selectedFileId);
+        await loadFunctionEvalResults(selectedFileId, currentPrompt.id);
       }
       
       // Reset the flag after a brief moment so it can be reused
@@ -986,10 +1026,10 @@ function App() {
   };
 
   const handleClearJudgeForAllRows = async (configId: number) => {
-    if (!selectedFileId) return;
+    if (!selectedFileId || !currentPrompt?.id) return;
     try {
-      await deleteJudgeResultsForConfig(configId);
-      await loadJudgeResults(selectedFileId);
+      await deleteJudgeResultsForConfig(configId, currentPrompt.id);
+      await loadJudgeResults(selectedFileId, currentPrompt.id);
       setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
       setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear judge results');
@@ -1139,10 +1179,10 @@ function App() {
   };
 
   const handleClearFunctionEvalForAllRows = async (configId: number) => {
-    if (!selectedFileId) return;
+    if (!selectedFileId || !currentPrompt?.id) return;
     try {
-      await deleteFunctionEvalResultsForConfig(configId);
-      await loadFunctionEvalResults(selectedFileId);
+      await deleteFunctionEvalResultsForConfig(configId, currentPrompt.id);
+      await loadFunctionEvalResults(selectedFileId, currentPrompt.id);
       setErrorWithTimestamp(null); // Clear error only on success
     } catch (err) {
       setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear function eval results');

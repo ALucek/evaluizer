@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Evaluation, JudgeResult, FunctionEvalResult, JudgeConfig, FunctionEvalConfig, Metric, listMetrics, createOrUpdateMetric, deleteMetric, GepaConfig, listGepaConfigs, createGepaConfig, updateGepaConfig, deleteGepaConfig, runGepa, subscribeToGepaProgress, GepaProgress, Prompt } from '../services/api';
+import { Evaluation, JudgeResult, FunctionEvalResult, JudgeConfig, FunctionEvalConfig, Metric, listMetrics, createOrUpdateMetric, deleteMetric, GepaConfig, listGepaConfigs, createGepaConfig, updateGepaConfig, deleteGepaConfig, runGepa, subscribeToGepaProgress, GepaProgress, Prompt, BestPromptsResponse, getBestPromptsForMetrics } from '../services/api';
 
 interface OptimizerPanelProps {
   csvFileId: number | null;
@@ -37,6 +37,10 @@ export default function OptimizerPanel({
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const saveTimeoutRefs = useRef<Record<string, number>>({});
+  
+  // State for best prompts
+  const [bestPrompts, setBestPrompts] = useState<BestPromptsResponse | null>(null);
+  const [isLoadingBestPrompts, setIsLoadingBestPrompts] = useState(false);
   
   // GEPA state
   const [gepaConfigs, setGepaConfigs] = useState<GepaConfig[]>([]);
@@ -103,6 +107,7 @@ export default function OptimizerPanel({
       setJudgeThresholds({});
       setFunctionEvalThresholds({});
       setMetrics([]);
+      setBestPrompts(null);
       return;
     }
 
@@ -140,6 +145,38 @@ export default function OptimizerPanel({
 
     loadMetrics();
   }, [csvFileId]);
+
+  // Load best prompts from backend when csvFileId, results, or prompts change
+  useEffect(() => {
+    if (!csvFileId) {
+      setBestPrompts(null);
+      return;
+    }
+
+    const loadBestPrompts = async () => {
+      setIsLoadingBestPrompts(true);
+      try {
+        const bestPromptsData = await getBestPromptsForMetrics(csvFileId);
+        setBestPrompts(bestPromptsData);
+      } catch (err) {
+        console.error('Failed to load best prompts:', err);
+        setBestPrompts(null);
+      } finally {
+        setIsLoadingBestPrompts(false);
+      }
+    };
+
+    loadBestPrompts();
+  }, [
+    csvFileId,
+    evaluations.length,
+    judgeResults.length,
+    functionEvalResults.length,
+    prompts.length,
+    latestEvaluation?.id,
+    latestJudgeResult?.id,
+    latestFunctionEvalResult?.id
+  ]);
 
   // Save metric to backend (debounced)
   const saveMetric = useCallback(async (
@@ -579,31 +616,50 @@ export default function OptimizerPanel({
               </div>
               <div style={{
                 display: 'flex',
-                alignItems: 'baseline',
-                gap: '0.5rem',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: '0.25rem',
                 justifyContent: 'flex-end',
                 minWidth: '80px',
               }}>
                 <div style={{
-                  fontSize: '1rem',
-                  color: averages.humanAnnotation !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                  fontFamily: 'monospace',
-                  fontWeight: '700',
-                  textAlign: 'right',
-                  minWidth: '3ch',
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: '0.5rem',
+                  justifyContent: 'flex-end',
                 }}>
-                  {averages.humanAnnotation !== null ? averages.humanAnnotation.toFixed(2) : '-'}
+                  <div style={{
+                    fontSize: '1rem',
+                    color: averages.humanAnnotation !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '700',
+                    textAlign: 'right',
+                    minWidth: '3ch',
+                  }}>
+                    {averages.humanAnnotation !== null ? averages.humanAnnotation.toFixed(2) : '-'}
+                  </div>
+                  <div style={{
+                    fontSize: '0.625rem',
+                    color: 'var(--text-tertiary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '400',
+                    textAlign: 'right',
+                    minWidth: '4ch',
+                  }}>
+                    ({averages.humanAnnotationCount})
+                  </div>
                 </div>
-                <div style={{
-                  fontSize: '0.625rem',
-                  color: 'var(--text-tertiary)',
-                  fontFamily: 'monospace',
-                  fontWeight: '400',
-                  textAlign: 'right',
-                  minWidth: '4ch',
-                }}>
-                  ({averages.humanAnnotationCount})
-                </div>
+                {bestPrompts?.human_annotation && (
+                  <div style={{
+                    fontSize: '0.5rem',
+                    color: 'var(--text-tertiary)',
+                    fontFamily: 'monospace',
+                    fontWeight: '400',
+                    textAlign: 'right',
+                  }}>
+                    BEST: {bestPrompts.human_annotation.name || 'Unnamed'} v{bestPrompts.human_annotation.version} ({bestPrompts.human_annotation.average_score.toFixed(2)})
+                  </div>
+                )}
               </div>
             </div>
             <input
@@ -675,31 +731,50 @@ export default function OptimizerPanel({
                 </div>
                 <div style={{
                   display: 'flex',
-                  alignItems: 'baseline',
-                  gap: '0.5rem',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: '0.25rem',
                   justifyContent: 'flex-end',
                   minWidth: '80px',
                 }}>
                   <div style={{
-                    fontSize: '1rem',
-                    color: average !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                    fontFamily: 'monospace',
-                    fontWeight: '700',
-                    textAlign: 'right',
-                    minWidth: '3ch',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '0.5rem',
+                    justifyContent: 'flex-end',
                   }}>
-                    {average !== null ? average.toFixed(2) : '-'}
+                    <div style={{
+                      fontSize: '1rem',
+                      color: average !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '700',
+                      textAlign: 'right',
+                      minWidth: '3ch',
+                    }}>
+                      {average !== null ? average.toFixed(2) : '-'}
+                    </div>
+                    <div style={{
+                      fontSize: '0.625rem',
+                      color: 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '400',
+                      textAlign: 'right',
+                      minWidth: '4ch',
+                    }}>
+                      ({count})
+                    </div>
                   </div>
-                  <div style={{
-                    fontSize: '0.625rem',
-                    color: 'var(--text-tertiary)',
-                    fontFamily: 'monospace',
-                    fontWeight: '400',
-                    textAlign: 'right',
-                    minWidth: '4ch',
-                  }}>
-                    ({count})
-                  </div>
+                  {bestPrompts?.judge_configs[config.id] && (
+                    <div style={{
+                      fontSize: '0.5rem',
+                      color: 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '400',
+                      textAlign: 'right',
+                    }}>
+                      BEST: {bestPrompts.judge_configs[config.id]!.name || 'Unnamed'} v{bestPrompts.judge_configs[config.id]!.version} ({bestPrompts.judge_configs[config.id]!.average_score.toFixed(2)})
+                    </div>
+                  )}
                 </div>
               </div>
               <input
@@ -775,31 +850,50 @@ export default function OptimizerPanel({
                 </div>
                 <div style={{
                   display: 'flex',
-                  alignItems: 'baseline',
-                  gap: '0.5rem',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  gap: '0.25rem',
                   justifyContent: 'flex-end',
                   minWidth: '80px',
                 }}>
                   <div style={{
-                    fontSize: '1rem',
-                    color: average !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                    fontFamily: 'monospace',
-                    fontWeight: '700',
-                    textAlign: 'right',
-                    minWidth: '3ch',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '0.5rem',
+                    justifyContent: 'flex-end',
                   }}>
-                    {average !== null ? average.toFixed(2) : '-'}
+                    <div style={{
+                      fontSize: '1rem',
+                      color: average !== null ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '700',
+                      textAlign: 'right',
+                      minWidth: '3ch',
+                    }}>
+                      {average !== null ? average.toFixed(2) : '-'}
+                    </div>
+                    <div style={{
+                      fontSize: '0.625rem',
+                      color: 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '400',
+                      textAlign: 'right',
+                      minWidth: '4ch',
+                    }}>
+                      ({count})
+                    </div>
                   </div>
-                  <div style={{
-                    fontSize: '0.625rem',
-                    color: 'var(--text-tertiary)',
-                    fontFamily: 'monospace',
-                    fontWeight: '400',
-                    textAlign: 'right',
-                    minWidth: '4ch',
-                  }}>
-                    ({count})
-                  </div>
+                  {bestPrompts?.function_eval_configs[config.id] && (
+                    <div style={{
+                      fontSize: '0.5rem',
+                      color: 'var(--text-tertiary)',
+                      fontFamily: 'monospace',
+                      fontWeight: '400',
+                      textAlign: 'right',
+                    }}>
+                      BEST: {bestPrompts.function_eval_configs[config.id]!.name || 'Unnamed'} v{bestPrompts.function_eval_configs[config.id]!.version} ({bestPrompts.function_eval_configs[config.id]!.average_score.toFixed(2)})
+                    </div>
+                  )}
                 </div>
               </div>
               <input
@@ -1021,12 +1115,12 @@ export default function OptimizerPanel({
                               disabled={isActuallyRunning || isRunningGepa !== null}
                               style={{
                                 padding: '0.25rem 0.5rem',
-                                backgroundColor: isActuallyRunning ? 'var(--accent-primary)' : 'transparent',
-                                border: `1px solid ${isActuallyRunning ? 'var(--accent-primary)' : 'var(--accent-success)'}`,
+                                backgroundColor: 'transparent',
+                                border: `1px solid ${isActuallyRunning ? 'var(--border-primary)' : 'var(--accent-success)'}`,
                                 borderRadius: '0',
                                 cursor: (isActuallyRunning || isRunningGepa !== null) ? 'not-allowed' : 'pointer',
                                 fontSize: '0.625rem',
-                                color: isActuallyRunning ? 'white' : 'var(--accent-success)',
+                                color: isActuallyRunning ? 'var(--text-tertiary)' : 'var(--accent-success)',
                                 fontWeight: '700',
                                 fontFamily: 'monospace',
                                 textTransform: 'uppercase',

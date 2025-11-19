@@ -323,20 +323,30 @@ async def delete_judge_result(
 @router.delete("/results/config/{config_id}")
 async def delete_judge_results_for_config(
     config_id: int,
+    prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete all judge results for a specific config"""
+    """Delete all judge results for a specific config, optionally filtered by prompt_id"""
     get_or_404(db, JudgeConfig, config_id, "Judge config not found")
     
-    deleted_count = db.query(JudgeResult).filter(
+    query = db.query(JudgeResult).filter(
         JudgeResult.config_id == config_id
-    ).delete()
+    )
+    
+    # If prompt_id is provided, only delete results for that prompt version
+    if prompt_id is not None:
+        from app.models.prompt import Prompt
+        get_or_404(db, Prompt, prompt_id, "Prompt not found")
+        query = query.filter(JudgeResult.prompt_id == prompt_id)
+    
+    deleted_count = query.delete()
     
     db.commit()
     
     return {
         "message": f"Deleted {deleted_count} judge result(s)",
         "config_id": config_id,
+        "prompt_id": prompt_id,
         "deleted_count": deleted_count
     }
 
