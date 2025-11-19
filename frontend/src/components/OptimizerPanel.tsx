@@ -174,8 +174,14 @@ export default function OptimizerPanel({
     functionEvalResults.length,
     prompts.length,
     latestEvaluation?.id,
+    latestEvaluation?.annotation, // Track annotation changes for human annotation best prompt
+    latestEvaluation?.updated_at, // Track when evaluation is updated
     latestJudgeResult?.id,
-    latestFunctionEvalResult?.id
+    latestFunctionEvalResult?.id,
+    // Also track annotation changes in evaluations array
+    evaluations.filter(e => e.annotation !== null && e.annotation !== undefined).length,
+    // Track a hash of annotation values to detect changes
+    evaluations.map(e => `${e.csv_row_id}-${e.annotation}`).join(',')
   ]);
 
   // Save metric to backend (debounced)
