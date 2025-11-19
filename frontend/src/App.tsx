@@ -9,7 +9,20 @@ import './index.css';
 
 function App() {
   const [csvFiles, setCsvFiles] = useState<CSVData[]>([]);
-  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  // Initialize selectedFileId from localStorage if available
+  const getInitialFileId = (): number | null => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('selectedFileId');
+      if (saved) {
+        const id = parseInt(saved, 10);
+        if (!isNaN(id)) {
+          return id;
+        }
+      }
+    }
+    return null;
+  };
+  const [selectedFileId, setSelectedFileId] = useState<number | null>(getInitialFileId());
   const [csvData, setCsvData] = useState<CSVDataWithRows | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string>(''); // Track current edited system prompt
@@ -26,6 +39,7 @@ function App() {
     setErrorTimestamp(errorMessage ? new Date() : null);
   }, []);
   const selectedFileIdRef = useRef<number | null>(null);
+  const isInitializingRef = useRef<boolean>(true);
   const [llmConfig, setLlmConfig] = useState<LLMConfig>({
     model: 'gpt-5-mini',
     temperature: 1.0,
@@ -84,8 +98,27 @@ function App() {
   };
 
   useEffect(() => {
-    loadCSVFiles();
-  }, []);
+    const loadFilesAndVerifySelection = async () => {
+      const files = await loadCSVFiles();
+      
+      // Verify the initially restored file still exists
+      const currentFileId = selectedFileId;
+      if (currentFileId !== null) {
+        const fileExists = files.some(f => f.id === currentFileId);
+        if (!fileExists) {
+          // File no longer exists, clear selection
+          setSelectedFileId(null);
+          localStorage.removeItem('selectedFileId');
+        }
+      }
+      
+      // Mark initialization as complete
+      isInitializingRef.current = false;
+    };
+    
+    loadFilesAndVerifySelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   const loadPrompt = async (csvFileId: number) => {
     try {
@@ -136,8 +169,9 @@ function App() {
         }
         
         // Load versions for this prompt
+        // Pass the prompt ID to preserve so we keep the restored prompt if it's a version
         const rootPromptId = promptToLoad.parent_prompt_id || promptToLoad.id;
-        await loadPromptVersions(rootPromptId);
+        await loadPromptVersions(rootPromptId, promptToLoad.id);
       } else {
         setCurrentPrompt(null);
         setPromptVersions([]);
@@ -151,11 +185,33 @@ function App() {
     }
   };
 
-  const loadPromptVersions = async (promptId: number) => {
+  const loadPromptVersions = async (promptId: number, preservePromptId?: number) => {
     try {
       const versions = await listPromptVersions(promptId);
       setPromptVersions(versions);
-      // If current prompt is not in versions, update it
+      
+      // If we're preserving a specific prompt ID (e.g., when restoring from localStorage),
+      // check if that prompt is in the versions list and keep it
+      if (preservePromptId !== undefined) {
+        const savedVersion = versions.find(v => v.id === preservePromptId);
+        if (savedVersion) {
+          // Update with the version from the list (to ensure we have latest data)
+          setCurrentPrompt(savedVersion);
+          
+          // Load LLM config from the saved version if it exists
+          if (savedVersion.model || savedVersion.temperature !== null || savedVersion.max_tokens !== null || savedVersion.concurrency !== null) {
+            setLlmConfig({
+              model: savedVersion.model || llmConfig.model,
+              temperature: savedVersion.temperature ?? llmConfig.temperature,
+              maxTokens: savedVersion.max_tokens ?? llmConfig.maxTokens,
+              concurrency: savedVersion.concurrency ?? llmConfig.concurrency,
+            });
+          }
+          return; // Don't overwrite with root prompt
+        }
+      }
+      
+      // If current prompt is not in versions, update it to the root prompt
       const currentVersion = versions.find(v => v.id === promptId);
       if (currentVersion) {
         setCurrentPrompt(currentVersion);
@@ -250,6 +306,16 @@ function App() {
 
   useEffect(() => {
     selectedFileIdRef.current = selectedFileId;
+    
+    // Save to localStorage whenever selectedFileId changes (but not during initial load)
+    if (!isInitializingRef.current) {
+      if (selectedFileId) {
+        localStorage.setItem('selectedFileId', selectedFileId.toString());
+      } else {
+        localStorage.removeItem('selectedFileId');
+      }
+    }
+    
     if (selectedFileId) {
       loadCSVData(selectedFileId);
       loadPrompt(selectedFileId);
