@@ -370,9 +370,9 @@ async def run_gepa(
     if not all_rows:
         raise ValueError(f"No rows found for CSV file {csv_file_id}")
     
-    # Create train/val split (90/10)
+    # Create train/val split (80/20)
     random.shuffle(all_rows)
-    val_cut = max(1, int(0.1 * len(all_rows)))
+    val_cut = max(1, int(0.2 * len(all_rows)))
     valset_rows = all_rows[:val_cut]
     trainset_rows = all_rows[val_cut:]
     
