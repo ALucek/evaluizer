@@ -48,8 +48,7 @@ See `src/evaluations/plugins/output_length.py` for a complete example that score
 ## Usage
 
 ```python
-from evaluations.registry import list_plugins, get_plugin
-from evaluations.base import EvaluationContext
+from evaluations import list_plugins, get_plugin, EvaluationContext
 
 # List all available plugins
 plugins = list_plugins()

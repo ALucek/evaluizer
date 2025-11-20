@@ -1,6 +1,6 @@
 # Evaluizer
 
-<img src="media/evaluizer_logo_white.png" alt="Evaluizer Logo" width="200">
+<img src="media/evaluizer_logo_white.png" alt="Evaluizer Logo" width="300">
 
 Evaluizer is a lightweight interface for evaluating and optimizing LLM prompts. It allows you to iterate on prompts, visualize outputs against datasets, manually annotate results, and run automated evaluations using both LLM judges and deterministic functions. It features **GEPA** (Genetic-Pareto), an optimization engine that evolves your prompts to maximize evaluation scores.
 
@@ -39,13 +39,13 @@ Start by uploading a CSV file containing your dataset. The columns in your CSV w
 
 ### Creating Prompts
 
-<img src="media/prompt_panel.png" width="200">
+<img src="media/prompt_panel.png" width="300">
 
 Use the **Prompt Editor** to configure the **System Prompt** and select a column to serve as the **User Message**. You can define variables in the system prompt using mustache syntax (e.g., `{{variable}}`) which will be populated from your CSV columns.
 
 ### Prompt Versioning and Config
 
-<img src="media/prompt_panel_2.png" width="200">
+<img src="media/prompt_panel_2.png" width="300">
 
 Evaluizer automatically versions your prompts. You can view the history of changes, revert to previous versions, and manage configuration settings for the generator model (e.g., temperature, max tokens).
 
@@ -57,7 +57,7 @@ The **Data Table** view allows you to see your CSV dataset alongside the generat
 
 ### Evals
 
-<img src="media/evaluations_panel.png" width="200">
+<img src="media/evaluations_panel.png" width="300">
 
 Evaluizer supports three types of evaluations:
 
@@ -73,11 +73,11 @@ Configure "Judge" prompts that act as evaluators. These judges take the input, t
 
 #### Making Function Evals
 For deterministic scoring, you can use Python-based function evaluations. These are implemented as plugins in the `evaluations/` directory.
-(See `evaluations/README.md` for details on creating custom plugins).
+(See [evaluations/README.md](evaluations/README.md) for details on creating custom plugins).
 
 ### Optimizing
 
-<img src="media/optimizer_panel.png" width="200">
+<img src="media/optimizer_panel.png" width="300">
 
 #### What is GEPA?
 **GEPA** (Genetic-Pareto) is an evolutionary optimization algorithm based on [Reflective Prompt Evolution](https://arxiv.org/abs/2507.19457). It uses a reflective approach where it:
@@ -99,7 +99,8 @@ Configure the optimization parameters (max iterations, reflection model) in the 
 Contributions welcome! Feel free to submit a PR.
 
 Todo list:
-- 
+- Better processing (parallel vs sequential)
+- Docker setup
 
 ## License
 
