@@ -21,6 +21,7 @@ from app.models.judge import JudgeConfig
 from app.models.function_eval import FunctionEvalConfig
 from app.services.llm_service import llm_service
 from app.services.function_eval_service import run_function_evaluation
+from app.services.judge_service import run_judge_evaluation
 from app.services.gepa_progress import update_progress, set_complete, set_error, clear_progress
 from app.utils import parse_json_safe, get_root_prompt_id, get_next_prompt_version
 
@@ -144,22 +145,12 @@ class EvalsBackedAdapter:
         async def evaluate_judge(judge_config):
             """Evaluate a single judge config"""
             try:
-                row_data_with_output = dict(row_data)
-                row_data_with_output["Output"] = summary
-                complete_prompt = llm_service.build_judge_prompt(
-                    judge_config.prompt,
-                    row_data_with_output,
-                    self.available_columns + ["Output"]
+                score, _ = await run_judge_evaluation(
+                    judge_config,
+                    row_data,
+                    summary,
+                    self.available_columns
                 )
-                judge_output = await llm_service.completion(
-                    complete_prompt,
-                    model=judge_config.model,
-                    temperature=judge_config.temperature,
-                    max_completion_tokens=judge_config.max_tokens
-                )
-                if not judge_output or not judge_output.strip():
-                    return f"judge_{judge_config.name}", 0.0, f"{judge_config.name}: empty judge output"
-                score = llm_service.parse_judge_score(judge_output)
                 return f"judge_{judge_config.name}", score, f"{judge_config.name}: {score:.3f}"
             except Exception as e:
                 import traceback
@@ -535,4 +526,3 @@ async def run_gepa(
         "score": best_score,
         "logs": f"Optimization completed. Best score: {best_score:.3f}"
     }
-

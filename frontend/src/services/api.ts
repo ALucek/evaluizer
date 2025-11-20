@@ -996,7 +996,7 @@ export interface FunctionEvaluationInfo {
 
 export async function listFunctionEvaluations(): Promise<FunctionEvaluationInfo[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/function-evaluations/`);
+    const response = await fetch(`${API_BASE_URL}/function-eval/plugins`);
     
     if (!response.ok) {
       const errorText = await response.text();

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, cast, Float
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 from app.database import get_db
 from app.models.metric import Metric
@@ -20,6 +20,41 @@ from app.schemas.metric import (
 )
 
 router = APIRouter()
+
+
+def _find_best_prompt(db: Session, prompt_scores: List[Tuple[int, float, int]]) -> Optional[BestPromptInfo]:
+    """
+    Helper function to find the best prompt from a list of (prompt_id, avg_score, count).
+    Prefers higher score, then higher prompt_id (more recent).
+    """
+    if not prompt_scores:
+        return None
+
+    best_prompt_id = None
+    best_avg_score = -1.0
+    best_result_count = 0
+    
+    for prompt_id, avg_score, result_count in prompt_scores:
+        # Handle potential None values or type mismatches
+        current_score = float(avg_score) if avg_score is not None else 0.0
+        
+        if current_score > best_avg_score or (current_score == best_avg_score and prompt_id > best_prompt_id):
+            best_prompt_id = prompt_id
+            best_avg_score = current_score
+            best_result_count = result_count
+    
+    if best_prompt_id:
+        prompt = db.query(Prompt).filter(Prompt.id == best_prompt_id).first()
+        if prompt:
+            return BestPromptInfo(
+                id=prompt.id,
+                name=prompt.name,
+                version=prompt.version,
+                average_score=best_avg_score,
+                result_count=best_result_count
+            )
+    
+    return None
 
 
 @router.get("/csv/{csv_file_id}/metrics", response_model=List[MetricResponse])
@@ -128,7 +163,6 @@ async def get_best_prompts_for_metrics(
     function_eval_configs_best: Dict[int, Optional[BestPromptInfo]] = {}
     
     # Calculate best prompt for human annotations
-    # Query evaluations with annotations (1 for thumbs up, 0 for thumbs down) grouped by prompt_id
     prompt_annotation_scores = db.query(
         Evaluation.prompt_id,
         func.avg(cast(Evaluation.annotation, Float)).label('avg_score'),
@@ -140,30 +174,7 @@ async def get_best_prompts_for_metrics(
         )
     ).group_by(Evaluation.prompt_id).all()
     
-    if prompt_annotation_scores:
-        # Find the prompt with highest average annotation score (higher = more thumbs up)
-        # If scores are equal, prefer the most recent prompt (by prompt_id)
-        best_prompt_id = None
-        best_avg_score = -1.0
-        best_result_count = 0
-        
-        for prompt_id, avg_score, result_count in prompt_annotation_scores:
-            if avg_score > best_avg_score or (avg_score == best_avg_score and prompt_id > best_prompt_id):
-                best_prompt_id = prompt_id
-                best_avg_score = float(avg_score)
-                best_result_count = result_count
-        
-        if best_prompt_id:
-            # Get prompt details
-            prompt = db.query(Prompt).filter(Prompt.id == best_prompt_id).first()
-            if prompt:
-                human_annotation_best = BestPromptInfo(
-                    id=prompt.id,
-                    name=prompt.name,
-                    version=prompt.version,
-                    average_score=best_avg_score,
-                    result_count=best_result_count
-                )
+    human_annotation_best = _find_best_prompt(db, prompt_annotation_scores)
     
     # Get all judge configs for this CSV file
     judge_configs = db.query(JudgeConfig).filter(
@@ -172,7 +183,6 @@ async def get_best_prompts_for_metrics(
     
     # For each judge config, find the best prompt
     for config in judge_configs:
-        # Query judge results grouped by prompt_id, calculate average score per prompt
         prompt_scores = db.query(
             JudgeResult.prompt_id,
             func.avg(JudgeResult.score).label('avg_score'),
@@ -184,37 +194,7 @@ async def get_best_prompts_for_metrics(
             )
         ).group_by(JudgeResult.prompt_id).all()
         
-        if not prompt_scores:
-            judge_configs_best[config.id] = None
-            continue
-        
-        # Find the prompt with highest average score
-        # If scores are equal, prefer the most recent prompt (by created_at)
-        best_prompt_id = None
-        best_avg_score = -1.0
-        best_result_count = 0
-        
-        for prompt_id, avg_score, result_count in prompt_scores:
-            if avg_score > best_avg_score or (avg_score == best_avg_score and prompt_id > best_prompt_id):
-                best_prompt_id = prompt_id
-                best_avg_score = float(avg_score)
-                best_result_count = result_count
-        
-        if best_prompt_id:
-            # Get prompt details
-            prompt = db.query(Prompt).filter(Prompt.id == best_prompt_id).first()
-            if prompt:
-                judge_configs_best[config.id] = BestPromptInfo(
-                    id=prompt.id,
-                    name=prompt.name,
-                    version=prompt.version,
-                    average_score=best_avg_score,
-                    result_count=best_result_count
-                )
-            else:
-                judge_configs_best[config.id] = None
-        else:
-            judge_configs_best[config.id] = None
+        judge_configs_best[config.id] = _find_best_prompt(db, prompt_scores)
     
     # Get all function eval configs for this CSV file
     function_eval_configs = db.query(FunctionEvalConfig).filter(
@@ -223,7 +203,6 @@ async def get_best_prompts_for_metrics(
     
     # For each function eval config, find the best prompt
     for config in function_eval_configs:
-        # Query function eval results grouped by prompt_id, calculate average score per prompt
         prompt_scores = db.query(
             FunctionEvalResult.prompt_id,
             func.avg(FunctionEvalResult.score).label('avg_score'),
@@ -235,41 +214,10 @@ async def get_best_prompts_for_metrics(
             )
         ).group_by(FunctionEvalResult.prompt_id).all()
         
-        if not prompt_scores:
-            function_eval_configs_best[config.id] = None
-            continue
-        
-        # Find the prompt with highest average score
-        # If scores are equal, prefer the most recent prompt (by prompt_id, assuming higher ID = more recent)
-        best_prompt_id = None
-        best_avg_score = -1.0
-        best_result_count = 0
-        
-        for prompt_id, avg_score, result_count in prompt_scores:
-            if avg_score > best_avg_score or (avg_score == best_avg_score and prompt_id > best_prompt_id):
-                best_prompt_id = prompt_id
-                best_avg_score = float(avg_score)
-                best_result_count = result_count
-        
-        if best_prompt_id:
-            # Get prompt details
-            prompt = db.query(Prompt).filter(Prompt.id == best_prompt_id).first()
-            if prompt:
-                function_eval_configs_best[config.id] = BestPromptInfo(
-                    id=prompt.id,
-                    name=prompt.name,
-                    version=prompt.version,
-                    average_score=best_avg_score,
-                    result_count=best_result_count
-                )
-            else:
-                function_eval_configs_best[config.id] = None
-        else:
-            function_eval_configs_best[config.id] = None
+        function_eval_configs_best[config.id] = _find_best_prompt(db, prompt_scores)
     
     return BestPromptsResponse(
         human_annotation=human_annotation_best,
         judge_configs=judge_configs_best,
         function_eval_configs=function_eval_configs_best
     )
-

@@ -7,8 +7,8 @@ from app.database import get_db
 from app.models.judge import JudgeConfig, JudgeResult
 from app.models.csv_data import CSVFile, CSVRow
 from app.models.evaluation import Evaluation
-from app.services.llm_service import llm_service
 from app.utils import parse_json_safe, get_or_404
+from app.services.judge_service import run_judge_evaluation
 from app.schemas.judge import (
     JudgeConfigResponse,
     CreateJudgeConfigRequest,
@@ -184,63 +184,39 @@ async def run_judge(
     if not row_data:
         raise HTTPException(status_code=400, detail="Invalid row data format")
     
-    # Get evaluation output for this row and prompt (if exists) and add it to row_data as "Output"
+    # Get evaluation output for this row and prompt (if exists)
     evaluation = db.query(Evaluation).filter(
         Evaluation.csv_row_id == request.csv_row_id,
         Evaluation.prompt_id == request.prompt_id
     ).first()
     
-    if evaluation and evaluation.output:
-        row_data["Output"] = evaluation.output
-    else:
-        row_data["Output"] = ""
+    output = evaluation.output if evaluation and evaluation.output else ""
     
-    # Parse CSV file columns and add "Output" to available columns
+    # Parse CSV file columns
     available_columns = parse_json_safe(csv_file.columns, None) or []
-    if "Output" not in available_columns:
-        available_columns = list(available_columns) + ["Output"]
     
-    # Build the complete judge prompt (prefix + core prompt + suffix, with variable substitution)
-    try:
-        complete_prompt = llm_service.build_judge_prompt(
-            config.prompt,
-            row_data,
-            available_columns
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
-    # Get completion from LLM with retries
+    # Run judge evaluation with retries
     raw_output = None
     score = None
     max_retries = 3
     
     for attempt in range(max_retries):
         try:
-            # Get completion from LLM
-            raw_output = await llm_service.completion(
-                complete_prompt,
-                model=config.model,
-                temperature=config.temperature,
-                max_completion_tokens=config.max_tokens,
+            score, raw_output = await run_judge_evaluation(
+                config,
+                row_data,
+                output,
+                available_columns
             )
-            
-            # Parse the score from the output
-            score = llm_service.parse_judge_score(raw_output)
-            
-            # Success - break out of retry loop
             break
-            
         except ValueError as e:
             # Score parsing failed - retry if we have attempts left
             if attempt < max_retries - 1:
                 continue
             else:
-                # Include the actual raw_output in the error message for debugging
-                output_preview = raw_output[:500] if raw_output else "(empty or None)"
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to parse score from LLM output after {max_retries} attempts: {str(e)}\n\nOutput received:\n{output_preview}"
+                    detail=f"Failed to parse score from LLM output after {max_retries} attempts: {str(e)}"
                 )
         except Exception as e:
             # LLM call failed - retry if we have attempts left
@@ -251,13 +227,6 @@ async def run_judge(
                     status_code=500,
                     detail=f"Error calling LLM after {max_retries} attempts: {str(e)}"
                 )
-    
-    # Ensure we have valid output and score
-    if raw_output is None or score is None:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get valid LLM output after {max_retries} attempts"
-        )
     
     # Verify prompt exists
     from app.models.prompt import Prompt
@@ -304,7 +273,7 @@ async def delete_judge_result(
     prompt_id: int,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete a judge result for a specific config, row, and prompt (idempotent - returns success even if result doesn't exist)"""
+    """Delete a judge result for a specific config, row, and prompt"""
     result = db.query(JudgeResult).filter(
         and_(
             JudgeResult.config_id == config_id,
@@ -326,7 +295,7 @@ async def delete_judge_results_for_config(
     prompt_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> dict[str, str | int]:
-    """Delete all judge results for a specific config, optionally filtered by prompt_id"""
+    """Delete all judge results for a specific config"""
     get_or_404(db, JudgeConfig, config_id, "Judge config not found")
     
     query = db.query(JudgeResult).filter(
@@ -349,4 +318,3 @@ async def delete_judge_results_for_config(
         "prompt_id": prompt_id,
         "deleted_count": deleted_count
     }
-
