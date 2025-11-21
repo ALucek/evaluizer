@@ -131,6 +131,7 @@ Contributions welcome! Feel free to submit a PR.
 Todo list:
 - Better processing (parallel vs sequential)
 - Run all rows that aren't filled
+- meta prompt agent
 
 ## License
 
