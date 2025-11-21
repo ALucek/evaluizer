@@ -27,7 +27,6 @@ interface UseFunctionEvalsReturn {
   handleDeleteFunctionEvalConfig: (id: number) => Promise<void>;
   handleRunFunctionEvalForRow: (configId: number, rowId: number) => Promise<void>;
   handleRunFunctionEvalForAllRows: (configId: number, concurrency?: number) => Promise<void>;
-  handleRunFunctionEvalForUnfilledRows: (configId: number, concurrency?: number) => Promise<void>;
   handleClearFunctionEvalForRow: (configId: number, rowId: number) => Promise<void>;
   handleClearFunctionEvalForAllRows: (configId: number) => Promise<void>;
   setFunctionEvalConfigs: React.Dispatch<React.SetStateAction<FunctionEvalConfig[]>>;
@@ -206,83 +205,6 @@ export function useFunctionEvals(
     }
   }, [selectedFileId, csvData, currentPrompt, functionEvalConfigs, setErrorWithTimestamp]);
 
-  const handleRunFunctionEvalForUnfilledRows = useCallback(async (configId: number, concurrency: number = 10) => {
-    if (!selectedFileId || !csvData || !currentPrompt?.id) return;
-    
-    try {
-      // Get evaluations and function eval results
-      const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
-      const freshFunctionEvalResults = await getFunctionEvalResultsForCSV(selectedFileId, currentPrompt.id);
-      
-      const evaluationsByRowId = new Map<number, Evaluation>();
-      evaluations.forEach(evaluation => {
-        evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
-      });
-
-      // Find rows that have outputs but no function eval results for this config
-      const unfilledRowIds = csvData.rows
-        .filter(row => {
-          const evaluation = evaluationsByRowId.get(row.id);
-          const output = evaluation?.output;
-          const hasOutput = output !== null && output !== undefined && output !== '';
-          
-          // Check if this row already has a function eval result for this config
-          const hasFunctionEvalResult = freshFunctionEvalResults.some(
-            r => r.config_id === configId && r.csv_row_id === row.id && r.prompt_id === currentPrompt.id
-          );
-          
-          return hasOutput && !hasFunctionEvalResult;
-        })
-        .map(row => row.id);
-
-      if (unfilledRowIds.length === 0) {
-        setErrorWithTimestamp('All rows with outputs already have function eval results');
-        return;
-      }
-
-      const config = functionEvalConfigs.find(c => c.id === configId);
-      if (!config) {
-        throw new Error('Function eval config not found');
-      }
-
-      const concurrencyLimit = concurrency || 10;
-      const batches: number[][] = [];
-      
-      for (let i = 0; i < unfilledRowIds.length; i += concurrencyLimit) {
-        batches.push(unfilledRowIds.slice(i, i + concurrencyLimit));
-      }
-
-      for (const batch of batches) {
-        const batchPromises = batch.map(async (rowId) => {
-          try {
-            const result = await runFunctionEval(configId, rowId, currentPrompt.id);
-            setTimeout(() => {
-              setLatestFunctionEvalResult(result);
-              setFunctionEvalResults(prev => {
-                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
-                return [...next, result];
-              });
-            }, 0);
-            return { success: true, rowId, result };
-          } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : `Failed to run function eval for row ${rowId}`;
-            setErrorWithTimestamp(errorMessage);
-            return { success: false, rowId, error: err };
-          }
-        });
-
-        await Promise.allSettled(batchPromises);
-      }
-      setErrorWithTimestamp(null);
-    } catch (err) {
-      setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run function evaluations');
-    } finally {
-      setTimeout(() => {
-        setLatestFunctionEvalResult(null);
-      }, 100);
-    }
-  }, [selectedFileId, csvData, currentPrompt, functionEvalConfigs, setErrorWithTimestamp]);
-
   const handleClearFunctionEvalForRow = useCallback(async (configId: number, rowId: number) => {
     if (!currentPrompt?.id) {
       setErrorWithTimestamp('No prompt selected');
@@ -318,7 +240,6 @@ export function useFunctionEvals(
     handleDeleteFunctionEvalConfig,
     handleRunFunctionEvalForRow,
     handleRunFunctionEvalForAllRows,
-    handleRunFunctionEvalForUnfilledRows,
     handleClearFunctionEvalForRow,
     handleClearFunctionEvalForAllRows,
     setFunctionEvalConfigs,

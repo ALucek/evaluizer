@@ -29,7 +29,6 @@ interface UseEvaluationsReturn {
   handleUpdateRow: (rowId: number, annotation?: number | null, feedback?: string) => Promise<void>;
   handleRunPrompt: (rowIds: number[], clearOutputsFirst?: boolean) => Promise<void>;
   handleRunAll: () => Promise<void>;
-  handleRunUnfilled: () => Promise<void>;
   handleCancel: () => void;
   handleClearAllOutputs: () => Promise<void>;
 }
@@ -234,50 +233,13 @@ export function useEvaluations(
     
     if (!selectedFileId || !currentPrompt?.id) return;
     
-    const allRowIds = csvData.rows.map(row => row.id);
-    
-    // Clear all evaluation results before running prompts
-    // This is necessary because eval results are tied to specific outputs
-    // When outputs change, the old eval results become invalid
-    if (judgeConfigs.length > 0) {
-      await Promise.allSettled(
-        judgeConfigs.map(config => 
-          deleteJudgeResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
-            console.error(`Error clearing judge results for config ${config.id}:`, err);
-          })
-        )
-      );
-      await loadJudgeResults(selectedFileId, currentPrompt.id);
-    }
-    
-    if (functionEvalConfigs.length > 0) {
-      await Promise.allSettled(
-        functionEvalConfigs.map(config => 
-          deleteFunctionEvalResultsForConfig(config.id, currentPrompt.id).catch((err: any) => {
-            console.error(`Error clearing function eval results for config ${config.id}:`, err);
-          })
-        )
-      );
-      await loadFunctionEvalResults(selectedFileId, currentPrompt.id);
-    }
-    
-    await handleRunPrompt(allRowIds, true);
-  }, [csvData, selectedFileId, currentPrompt, judgeConfigs, functionEvalConfigs, handleRunPrompt, loadJudgeResults, loadFunctionEvalResults, setErrorWithTimestamp]);
-
-  const handleRunUnfilled = useCallback(async () => {
-    if (!csvData || csvData.rows.length === 0) {
-      setErrorWithTimestamp('No rows to run');
-      return;
-    }
-    
-    if (!selectedFileId || !currentPrompt?.id) return;
-    
     // Reload evaluations to get the latest state
     await loadEvaluations(selectedFileId, currentPrompt.id);
     
     // Get fresh evaluations after reload
     const freshEvals = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
     
+    // Only run for rows that don't have outputs yet
     const unfilledRowIds = csvData.rows
       .filter(row => {
         const evaluation = freshEvals.find(e => e.csv_row_id === row.id && e.prompt_id === currentPrompt.id);
@@ -286,19 +248,11 @@ export function useEvaluations(
       .map(row => row.id);
       
     if (unfilledRowIds.length === 0) {
-      setErrorWithTimestamp('All rows are already filled');
+      setErrorWithTimestamp('All rows already have outputs. Use "Clear All Outputs" first if you want to regenerate.');
       return;
     }
     
-    // Clear the outputs for unfilled rows first to trigger the UI update
-    const clearPromises = unfilledRowIds.map(rowId => 
-      updateEvaluation(rowId, currentPrompt.id, "", null, null)
-    );
-    await Promise.all(clearPromises);
-    
-    // Reload evaluations after clearing
-    await loadEvaluations(selectedFileId, currentPrompt.id);
-    
+    // Run prompts only for unfilled rows
     await handleRunPrompt(unfilledRowIds, false);
   }, [csvData, selectedFileId, currentPrompt, loadEvaluations, handleRunPrompt, setErrorWithTimestamp]);
 
@@ -374,7 +328,6 @@ export function useEvaluations(
     handleUpdateRow,
     handleRunPrompt,
     handleRunAll,
-    handleRunUnfilled,
     handleCancel,
     handleClearAllOutputs,
   };

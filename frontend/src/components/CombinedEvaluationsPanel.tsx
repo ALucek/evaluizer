@@ -11,7 +11,6 @@ interface CombinedEvaluationsPanelProps {
   columns: string[];
   // Judge callbacks
   onRunJudgeForAllRows?: (configId: number, concurrency?: number) => Promise<void>;
-  onRunJudgeForUnfilledRows?: (configId: number, concurrency?: number) => Promise<void>;
   onClearJudgeForAllRows?: (configId: number) => Promise<void>;
   onCreateJudgeConfig?: (name: string, prompt: string, llmConfig: LLMConfig) => Promise<JudgeConfig>;
   onUpdateJudgeConfig?: (id: number, partial: { name?: string; prompt?: string; model?: string; temperature?: number; maxTokens?: number }) => Promise<void>;
@@ -25,7 +24,6 @@ interface CombinedEvaluationsPanelProps {
   onUpdateFunctionEvalConfig?: (id: number, partial: { name?: string; config?: Record<string, any> }) => Promise<void>;
   onDeleteFunctionEvalConfig?: (id: number) => Promise<void>;
   onRunFunctionEvalForAllRows?: (configId: number, concurrency?: number) => Promise<void>;
-  onRunFunctionEvalForUnfilledRows?: (configId: number, concurrency?: number) => Promise<void>;
   onClearFunctionEvalForAllRows?: (configId: number) => Promise<void>;
 }
 
@@ -42,7 +40,6 @@ export default function CombinedEvaluationsPanel({
   onFunctionEvalConfigsChange: _onFunctionEvalConfigsChange,
   columns,
   onRunJudgeForAllRows,
-  onRunJudgeForUnfilledRows,
   onClearJudgeForAllRows,
   onCreateJudgeConfig,
   onUpdateJudgeConfig,
@@ -55,7 +52,6 @@ export default function CombinedEvaluationsPanel({
   onUpdateFunctionEvalConfig: _onUpdateFunctionEvalConfig,
   onDeleteFunctionEvalConfig,
   onRunFunctionEvalForAllRows,
-  onRunFunctionEvalForUnfilledRows,
   onClearFunctionEvalForAllRows,
 }: CombinedEvaluationsPanelProps) {
   // Judge state
@@ -573,45 +569,6 @@ export default function CombinedEvaluationsPanel({
                         {(isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 'RUNNING...' : 'RUN ALL'}
                       </button>
                     )}
-                    {isJudge && onRunJudgeForUnfilledRows && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onRunJudgeForUnfilledRows && judgeConfig) {
-                            onRunJudgeForUnfilledRows(judgeConfig.id, judgeConcurrency);
-                          }
-                        }}
-                        disabled={isRunningJudge && runningJudgeConfigId === judgeConfig?.id}
-                        style={{
-                          padding: '0.25rem 0.5rem',
-                          backgroundColor: 'transparent',
-                          color: (isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 'var(--text-tertiary)' : 'var(--accent-success)',
-                          border: `1px solid ${(isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 'var(--border-primary)' : 'var(--accent-success)'}`,
-                          borderRadius: '0',
-                          cursor: (isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 'not-allowed' : 'pointer',
-                          fontSize: '0.6875rem',
-                          fontWeight: '700',
-                          fontFamily: 'monospace',
-                          whiteSpace: 'nowrap',
-                          opacity: (isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 0.4 : 1,
-                          transition: 'none',
-                          textTransform: 'uppercase',
-                          width: '100%',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!(isRunningJudge && runningJudgeConfigId === judgeConfig?.id)) {
-                            e.currentTarget.style.outline = '2px solid var(--accent-success)';
-                            e.currentTarget.style.outlineOffset = '-2px';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.outline = 'none';
-                        }}
-                        title="Run this evaluation for rows without results"
-                      >
-                        {(isRunningJudge && runningJudgeConfigId === judgeConfig?.id) ? 'RUNNING...' : 'RUN UNFILLED'}
-                      </button>
-                    )}
                     {isFunction && onRunFunctionEvalForAllRows && (
                       <button
                         onClick={(e) => {
@@ -645,41 +602,6 @@ export default function CombinedEvaluationsPanel({
                         title="Run this evaluation for all rows"
                       >
                         RUN ALL
-                      </button>
-                    )}
-                    {isFunction && onRunFunctionEvalForUnfilledRows && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onRunFunctionEvalForUnfilledRows && functionConfig) {
-                            onRunFunctionEvalForUnfilledRows(functionConfig.id, judgeConcurrency);
-                          }
-                        }}
-                        style={{
-                          padding: '0.25rem 0.5rem',
-                          backgroundColor: 'transparent',
-                          color: 'var(--accent-success)',
-                          border: '1px solid var(--accent-success)',
-                          borderRadius: '0',
-                          cursor: 'pointer',
-                          fontSize: '0.6875rem',
-                          fontWeight: '700',
-                          fontFamily: 'monospace',
-                          whiteSpace: 'nowrap',
-                          transition: 'none',
-                          textTransform: 'uppercase',
-                          width: '100%',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.outline = '2px solid var(--accent-success)';
-                          e.currentTarget.style.outlineOffset = '-2px';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.outline = 'none';
-                        }}
-                        title="Run this evaluation for rows without results"
-                      >
-                        RUN UNFILLED
                       </button>
                     )}
                     {(isJudge ? onClearJudgeForAllRows : onClearFunctionEvalForAllRows) && (
@@ -1599,72 +1521,6 @@ export default function CombinedEvaluationsPanel({
               }}
             >
               {isRunningJudge ? 'RUNNING...' : 'RUN ALL EVALS'}
-            </button>
-          )}
-          {(onRunJudgeForUnfilledRows || onRunFunctionEvalForUnfilledRows) && (
-            <button
-              onClick={async () => {
-                // Run unfilled judge evaluations first, then unfilled function evaluations
-                if (onRunJudgeForUnfilledRows && judgeConfigs.length > 0) {
-                  const sortedJudgeConfigs = [...judgeConfigs].sort((a, b) => {
-                    if (a.created_at && b.created_at) {
-                      const dateA = new Date(a.created_at).getTime();
-                      const dateB = new Date(b.created_at).getTime();
-                      if (dateA !== dateB) {
-                        return dateA - dateB;
-                      }
-                    }
-                    return a.name.localeCompare(b.name);
-                  });
-                  for (const config of sortedJudgeConfigs) {
-                    await onRunJudgeForUnfilledRows(config.id, judgeConcurrency);
-                  }
-                }
-                if (onRunFunctionEvalForUnfilledRows && functionEvalConfigs.length > 0) {
-                  const sortedFunctionConfigs = [...functionEvalConfigs].sort((a, b) => {
-                    if (a.created_at && b.created_at) {
-                      const dateA = new Date(a.created_at).getTime();
-                      const dateB = new Date(b.created_at).getTime();
-                      if (dateA !== dateB) {
-                        return dateA - dateB;
-                      }
-                    }
-                    return a.name.localeCompare(b.name);
-                  });
-                  for (const config of sortedFunctionConfigs) {
-                    await onRunFunctionEvalForUnfilledRows(config.id, judgeConcurrency);
-                  }
-                }
-              }}
-              disabled={!csvFileId || isRunningJudge}
-              style={{
-                flex: 1,
-                padding: '0.5rem 1rem',
-                backgroundColor: 'transparent',
-                color: (!csvFileId || isRunningJudge) ? 'var(--text-tertiary)' : 'var(--accent-success)',
-                border: `1px solid ${(!csvFileId || isRunningJudge) ? 'var(--border-primary)' : 'var(--accent-success)'}`,
-                borderRadius: '0',
-                cursor: (!csvFileId || isRunningJudge) ? 'not-allowed' : 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                fontFamily: 'monospace',
-                transition: 'none',
-                textTransform: 'uppercase',
-                opacity: (!csvFileId || isRunningJudge) ? 0.4 : 1,
-              }}
-              onMouseEnter={(e) => {
-                if (csvFileId && !isRunningJudge) {
-                  e.currentTarget.style.outline = '2px solid var(--accent-success)';
-                  e.currentTarget.style.outlineOffset = '-2px';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (csvFileId && !isRunningJudge) {
-                  e.currentTarget.style.outline = 'none';
-                }
-              }}
-            >
-              {isRunningJudge ? 'RUNNING...' : 'RUN UNFILLED EVALS'}
             </button>
           )}
           {(onClearJudgeForAllRows || onClearFunctionEvalForAllRows) && (
