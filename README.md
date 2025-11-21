@@ -2,7 +2,7 @@
 
 <img src="media/evaluizer_logo_white.png" alt="Evaluizer Logo" width="150">
 
-Evaluizer is a lightweight interface for evaluating and optimizing LLM prompts. It allows you to iterate on prompts, visualize outputs against datasets, manually annotate results, and run automated evaluations using both LLM judges and deterministic functions. It features **GEPA** (Genetic-Pareto), an optimization engine that evolves your prompts to maximize evaluation scores.
+Evaluizer is an interface for evaluating and optimizing LLM prompts. It allows you to visualize outputs against datasets, manually annotate results, and run automated evaluations using both LLM judges and deterministic functions. It features **GEPA** (Genetic-Pareto), an optimization engine that iteratively evolves your prompts to maximize evaluation scores through reflective feedback loops.
 
 ## Setup and Install
 
