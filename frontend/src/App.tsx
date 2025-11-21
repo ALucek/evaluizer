@@ -70,6 +70,7 @@ function App() {
     handleDeleteJudgeConfig,
     handleRunJudgeForRow,
     handleRunJudgeForAllRows,
+    handleRunJudgeForUnfilledRows,
     handleCancelJudge,
     handleClearJudgeForRow,
     handleClearJudgeForAllRows,
@@ -88,6 +89,8 @@ function App() {
     handleDeleteFunctionEvalConfig,
     handleRunFunctionEvalForRow,
     handleRunFunctionEvalForAllRows,
+    handleRunFunctionEvalForUnfilledRows,
+    handleClearFunctionEvalForRow,
     handleClearFunctionEvalForAllRows,
     setFunctionEvalConfigs,
   } = useFunctionEvals(selectedFileId, currentPrompt, csvData, setErrorWithTimestamp);
@@ -102,10 +105,12 @@ function App() {
     setIsRunningGepa,
     isRunningGepa,
     clearAllOutputs,
+    runningRowIds,
     loadEvaluations,
     handleUpdateRow,
     handleRunPrompt,
     handleRunAll,
+    handleRunUnfilled,
     handleCancel,
     handleClearAllOutputs,
   } = useEvaluations(
@@ -259,6 +264,7 @@ function App() {
                 llmConfig={llmConfig}
                 onLLMConfigChange={setLlmConfig}
                 onRunAll={handleRunAll}
+                onRunUnfilled={handleRunUnfilled}
                 onClearAllOutputs={handleClearAllOutputs}
                 onCancel={handleCancel}
                 isRunning={isRunning || isRunningGepa}
@@ -295,6 +301,7 @@ function App() {
                 onFunctionEvalConfigsChange={setFunctionEvalConfigs}
                 columns={currentColumns}
                 onRunJudgeForAllRows={handleRunJudgeForAllRows}
+                onRunJudgeForUnfilledRows={handleRunJudgeForUnfilledRows}
                 onClearJudgeForAllRows={handleClearJudgeForAllRows}
                 onCreateJudgeConfig={handleCreateJudgeConfig}
                 onUpdateJudgeConfig={handleUpdateJudgeConfig}
@@ -307,6 +314,7 @@ function App() {
                 onUpdateFunctionEvalConfig={handleUpdateFunctionEvalConfig}
                 onDeleteFunctionEvalConfig={handleDeleteFunctionEvalConfig}
                 onRunFunctionEvalForAllRows={handleRunFunctionEvalForAllRows}
+                onRunFunctionEvalForUnfilledRows={handleRunFunctionEvalForUnfilledRows}
                 onClearFunctionEvalForAllRows={handleClearFunctionEvalForAllRows}
               />
             </>
@@ -402,6 +410,7 @@ function App() {
                 isRunningAll={isRunningAll}
                 latestEvaluation={latestEvaluation}
                 clearAllOutputs={clearAllOutputs}
+                runningRowIds={runningRowIds}
                 judgeConfigs={judgeConfigs}
                 judgeResults={judgeResults}
                 latestJudgeResult={latestJudgeResult}
@@ -414,7 +423,7 @@ function App() {
                 functionEvalResults={functionEvalResults}
                 latestFunctionEvalResult={latestFunctionEvalResult}
                 onRunFunctionEvalForRow={handleRunFunctionEvalForRow}
-                onClearFunctionEvalForRow={handleClearFunctionEvalForAllRows}
+                onClearFunctionEvalForRow={handleClearFunctionEvalForRow}
               />
             ) : (
               <div style={{ 

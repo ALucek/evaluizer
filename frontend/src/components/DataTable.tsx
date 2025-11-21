@@ -14,6 +14,7 @@ interface DataTableProps {
   isRunningAll?: boolean;
   latestEvaluation?: Evaluation | null;
   clearAllOutputs?: boolean;
+  runningRowIds?: Set<number>;
   judgeConfigs?: JudgeConfig[];
   judgeResults?: JudgeResult[];
   latestJudgeResult?: JudgeResult | null;
@@ -43,6 +44,7 @@ export default function DataTable({
   isRunningAll = false,
   latestEvaluation,
   clearAllOutputs = false,
+  runningRowIds: externalRunningRowIds,
   judgeConfigs = [],
   judgeResults = [],
   latestJudgeResult = null,
@@ -368,6 +370,13 @@ export default function DataTable({
       });
     });
   }, [clearAllOutputs, data]);
+
+  // Sync external running row IDs with internal state
+  useEffect(() => {
+    if (externalRunningRowIds) {
+      setRunningRows(externalRunningRowIds);
+    }
+  }, [externalRunningRowIds]);
 
   // Handle single evaluation updates (for incremental updates during "Run All")
   useEffect(() => {

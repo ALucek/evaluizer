@@ -32,6 +32,7 @@ interface UseJudgesReturn {
   handleDeleteJudgeConfig: (id: number) => Promise<void>;
   handleRunJudgeForRow: (configId: number, rowId: number) => Promise<void>;
   handleRunJudgeForAllRows: (configId: number, concurrency?: number) => Promise<void>;
+  handleRunJudgeForUnfilledRows: (configId: number, concurrency?: number) => Promise<void>;
   handleCancelJudge: () => void;
   handleClearJudgeForRow: (configId: number, rowId: number) => Promise<void>;
   handleClearJudgeForAllRows: (configId: number) => Promise<void>;
@@ -261,6 +262,127 @@ export function useJudges(
     }
   }, [selectedFileId, csvData, currentPrompt, judgeConfigs, setErrorWithTimestamp]);
 
+  const handleRunJudgeForUnfilledRows = useCallback(async (configId: number, concurrency: number = 10) => {
+    if (!selectedFileId || !csvData || !currentPrompt?.id) return;
+    
+    judgeCancellationRef.current = false;
+    setIsRunningJudge(true);
+    setRunningJudgeConfigId(configId);
+
+    let hadErrors = false;
+
+    try {
+      // Get evaluations and judge results
+      const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
+      const freshJudgeResults = await getJudgeResultsForCSV(selectedFileId, currentPrompt.id);
+      
+      const evaluationsByRowId = new Map<number, Evaluation>();
+      evaluations.forEach(evaluation => {
+        evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
+      });
+
+      // Find rows that have outputs but no judge results for this config
+      const unfilledRowIds = csvData.rows
+        .filter(row => {
+          const evaluation = evaluationsByRowId.get(row.id);
+          const output = evaluation?.output;
+          const hasOutput = output !== null && output !== undefined && output !== '';
+          
+          // Check if this row already has a judge result for this config
+          const hasJudgeResult = freshJudgeResults.some(
+            r => r.config_id === configId && r.csv_row_id === row.id && r.prompt_id === currentPrompt.id
+          );
+          
+          return hasOutput && !hasJudgeResult;
+        })
+        .map(row => row.id);
+
+      if (unfilledRowIds.length === 0) {
+        setErrorWithTimestamp('All rows with outputs already have judge results');
+        return;
+      }
+
+      const config = judgeConfigs.find(c => c.id === configId);
+      if (!config) {
+        throw new Error('Judge config not found');
+      }
+
+      const concurrencyLimit = concurrency || 10;
+      const batches: number[][] = [];
+      
+      for (let i = 0; i < unfilledRowIds.length; i += concurrencyLimit) {
+        batches.push(unfilledRowIds.slice(i, i + concurrencyLimit));
+      }
+
+      for (const batch of batches) {
+        if (judgeCancellationRef.current) break;
+        
+        const batchPromises = batch.map(async (rowId) => {
+          const cellKey = `${configId}-${rowId}`;
+          setRunningJudgeCells(prev => new Set(prev).add(cellKey));
+          
+          if (judgeCancellationRef.current) {
+            setRunningJudgeCells(prev => {
+              const next = new Set(prev);
+              next.delete(cellKey);
+              return next;
+            });
+            return { success: false, rowId, error: new Error('Cancelled') };
+          }
+          
+          try {
+            const result = await runJudge({ configId, csvRowId: rowId, promptId: currentPrompt.id });
+            setTimeout(() => {
+              setLatestJudgeResult(result);
+              setJudgeResults(prev => {
+                const next = prev.filter(r => !(r.config_id === configId && r.csv_row_id === rowId && r.prompt_id === currentPrompt.id));
+                return [...next, result];
+              });
+              setRunningJudgeCells(prev => {
+                const next = new Set(prev);
+                next.delete(cellKey);
+                return next;
+              });
+            }, 0);
+            return { success: true, rowId, result };
+          } catch (err) {
+            setRunningJudgeCells(prev => {
+              const next = new Set(prev);
+              next.delete(cellKey);
+              return next;
+            });
+            if (!judgeCancellationRef.current) {
+              hadErrors = true;
+              const errorMessage = err instanceof Error ? err.message : `Failed to run judge for row ${rowId}`;
+              setErrorWithTimestamp(errorMessage);
+            }
+            return { success: false, rowId, error: err };
+          }
+        });
+
+        await Promise.allSettled(batchPromises);
+        
+        if (judgeCancellationRef.current) break;
+      }
+    } catch (err) {
+      hadErrors = true;
+      if (!judgeCancellationRef.current) {
+        setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to run judge evaluations');
+      }
+    } finally {
+      setIsRunningJudge(false);
+      setRunningJudgeConfigId(null);
+      setIsCancellingJudge(false);
+      judgeCancellationRef.current = false;
+      if (!hadErrors && !judgeCancellationRef.current) {
+        setErrorWithTimestamp(null);
+      }
+      setTimeout(() => {
+        setLatestJudgeResult(null);
+      }, 100);
+    }
+  }, [selectedFileId, csvData, currentPrompt, judgeConfigs, setErrorWithTimestamp]);
+
   const handleCancelJudge = useCallback(() => {
     judgeCancellationRef.current = true;
     setIsCancellingJudge(true);
@@ -305,6 +427,7 @@ export function useJudges(
     handleDeleteJudgeConfig,
     handleRunJudgeForRow,
     handleRunJudgeForAllRows,
+    handleRunJudgeForUnfilledRows,
     handleCancelJudge,
     handleClearJudgeForRow,
     handleClearJudgeForAllRows,

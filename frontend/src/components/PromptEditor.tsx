@@ -19,6 +19,7 @@ interface PromptEditorProps {
   llmConfig: LLMConfig;
   onLLMConfigChange: (config: LLMConfig) => void;
   onRunAll?: () => Promise<void>;
+  onRunUnfilled?: () => Promise<void>;
   onClearAllOutputs?: () => Promise<void>;
   onCancel?: () => void;
   isRunning?: boolean;
@@ -26,7 +27,7 @@ interface PromptEditorProps {
   isCancelling?: boolean;
 }
 
-export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, llmConfig, onLLMConfigChange, onRunAll, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
+export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, onVersionSelect, onDeletePrompt, onContentChange, llmConfig, onLLMConfigChange, onRunAll, onRunUnfilled, onClearAllOutputs, onCancel, isRunning = false, isRunningAll = false, isCancelling = false }: PromptEditorProps) {
   const [systemPrompt, setSystemPrompt] = useState(prompt?.system_prompt || '');
   const [userMessageColumn, setUserMessageColumn] = useState<string | null>(prompt?.user_message_column || null);
   const [promptName, setPromptName] = useState('');
@@ -664,6 +665,48 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
               }}
             >
               {isRunning ? 'RUNNING...' : 'RUN ALL ROWS'}
+            </button>
+          )}
+          {onRunUnfilled && (
+            <button
+              onClick={async () => {
+                if (onRunUnfilled) {
+                  try {
+                    await onRunUnfilled();
+                  } catch (err) {
+                    // Error handling is done in parent component
+                  }
+                }
+              }}
+              disabled={isRunning || !validation.isValid || !prompt}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                backgroundColor: 'transparent',
+                color: (isRunning || !validation.isValid || !prompt) ? 'var(--text-tertiary)' : 'var(--accent-success)',
+                border: `1px solid ${(isRunning || !validation.isValid || !prompt) ? 'var(--border-primary)' : 'var(--accent-success)'}`,
+                borderRadius: '0',
+                cursor: (isRunning || !validation.isValid || !prompt) ? 'not-allowed' : 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                fontFamily: 'monospace',
+                transition: 'none',
+                opacity: (isRunning || !validation.isValid || !prompt) ? 0.4 : 1,
+                textTransform: 'uppercase',
+              }}
+              onMouseEnter={(e) => {
+                if (!isRunning && validation.isValid && prompt) {
+                  e.currentTarget.style.outline = '2px solid var(--accent-success)';
+                  e.currentTarget.style.outlineOffset = '-2px';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isRunning && validation.isValid && prompt) {
+                  e.currentTarget.style.outline = 'none';
+                }
+              }}
+            >
+              {isRunning ? 'RUNNING...' : 'RUN UNFILLED'}
             </button>
           )}
           {onClearAllOutputs && (

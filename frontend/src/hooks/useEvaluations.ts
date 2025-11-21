@@ -24,10 +24,12 @@ interface UseEvaluationsReturn {
   setIsRunningGepa: (isRunning: boolean) => void;
   isRunningGepa: boolean;
   clearAllOutputs: boolean;
+  runningRowIds: Set<number>;
   loadEvaluations: (csvFileId: number, promptId: number | null) => Promise<void>;
   handleUpdateRow: (rowId: number, annotation?: number | null, feedback?: string) => Promise<void>;
   handleRunPrompt: (rowIds: number[], clearOutputsFirst?: boolean) => Promise<void>;
   handleRunAll: () => Promise<void>;
+  handleRunUnfilled: () => Promise<void>;
   handleCancel: () => void;
   handleClearAllOutputs: () => Promise<void>;
 }
@@ -52,6 +54,7 @@ export function useEvaluations(
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRunningGepa, setIsRunningGepa] = useState(false);
   const [clearAllOutputs, setClearAllOutputs] = useState(false);
+  const [runningRowIds, setRunningRowIds] = useState<Set<number>>(new Set());
   const cancellationRef = useRef<boolean>(false);
 
   const loadEvaluations = useCallback(async (csvFileId: number, promptId: number | null) => {
@@ -126,6 +129,9 @@ export function useEvaluations(
     setIsRunning(true);
     setIsRunningAll(isAllRows);
     setLatestEvaluation(null);
+    
+    // Mark rows as running
+    setRunningRowIds(new Set(rowIds));
 
     let hadErrors = false;
 
@@ -173,6 +179,12 @@ export function useEvaluations(
             
             startTransition(() => {
               setLatestEvaluation(evaluation);
+              // Remove this row from running set
+              setRunningRowIds(prev => {
+                const next = new Set(prev);
+                next.delete(rowId);
+                return next;
+              });
             });
             
             return { success: true, rowId, evaluation };
@@ -200,6 +212,7 @@ export function useEvaluations(
       setIsRunning(false);
       setIsRunningAll(false);
       setIsCancelling(false);
+      setRunningRowIds(new Set());
       cancellationRef.current = false;
       if (!hadErrors && !cancellationRef.current) {
         setErrorWithTimestamp(null);
@@ -248,6 +261,44 @@ export function useEvaluations(
     await handleRunPrompt(allRowIds, true);
   }, [csvData, selectedFileId, currentPrompt, judgeConfigs, functionEvalConfigs, handleRunPrompt, loadJudgeResults, loadFunctionEvalResults, setErrorWithTimestamp]);
 
+  const handleRunUnfilled = useCallback(async () => {
+    if (!csvData || csvData.rows.length === 0) {
+      setErrorWithTimestamp('No rows to run');
+      return;
+    }
+    
+    if (!selectedFileId || !currentPrompt?.id) return;
+    
+    // Reload evaluations to get the latest state
+    await loadEvaluations(selectedFileId, currentPrompt.id);
+    
+    // Get fresh evaluations after reload
+    const freshEvals = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
+    
+    const unfilledRowIds = csvData.rows
+      .filter(row => {
+        const evaluation = freshEvals.find(e => e.csv_row_id === row.id && e.prompt_id === currentPrompt.id);
+        return !evaluation || !evaluation.output || evaluation.output.trim() === '';
+      })
+      .map(row => row.id);
+      
+    if (unfilledRowIds.length === 0) {
+      setErrorWithTimestamp('All rows are already filled');
+      return;
+    }
+    
+    // Clear the outputs for unfilled rows first to trigger the UI update
+    const clearPromises = unfilledRowIds.map(rowId => 
+      updateEvaluation(rowId, currentPrompt.id, "", null, null)
+    );
+    await Promise.all(clearPromises);
+    
+    // Reload evaluations after clearing
+    await loadEvaluations(selectedFileId, currentPrompt.id);
+    
+    await handleRunPrompt(unfilledRowIds, false);
+  }, [csvData, selectedFileId, currentPrompt, loadEvaluations, handleRunPrompt, setErrorWithTimestamp]);
+
   const handleCancel = useCallback(() => {
     cancellationRef.current = true;
     setIsCancelling(true);
@@ -291,6 +342,9 @@ export function useEvaluations(
         await loadFunctionEvalResults(selectedFileId, currentPrompt.id);
       }
       
+      // Reload evaluations to update the state
+      await loadEvaluations(selectedFileId, currentPrompt.id);
+      
       setTimeout(() => {
         setClearAllOutputs(false);
       }, 100);
@@ -298,7 +352,7 @@ export function useEvaluations(
     } catch (err) {
       setErrorWithTimestamp(err instanceof Error ? err.message : 'Failed to clear all outputs');
     }
-  }, [csvData, selectedFileId, currentPrompt, judgeConfigs, functionEvalConfigs, loadJudgeResults, loadFunctionEvalResults, setErrorWithTimestamp]);
+  }, [csvData, selectedFileId, currentPrompt, judgeConfigs, functionEvalConfigs, loadJudgeResults, loadFunctionEvalResults, loadEvaluations, setErrorWithTimestamp]);
 
   return {
     evaluations,
@@ -312,10 +366,12 @@ export function useEvaluations(
     setIsRunningGepa,
     isRunningGepa,
     clearAllOutputs,
+    runningRowIds,
     loadEvaluations,
     handleUpdateRow,
     handleRunPrompt,
     handleRunAll,
+    handleRunUnfilled,
     handleCancel,
     handleClearAllOutputs,
   };
