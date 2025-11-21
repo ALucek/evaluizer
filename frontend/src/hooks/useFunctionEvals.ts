@@ -133,22 +133,33 @@ export function useFunctionEvals(
     if (!selectedFileId || !csvData || !currentPrompt?.id) return;
     
     try {
+      // Get evaluations and function eval results to check what already exists
       const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
+      const freshFunctionEvalResults = await getFunctionEvalResultsForCSV(selectedFileId, currentPrompt.id);
+      
       const evaluationsByRowId = new Map<number, Evaluation>();
       evaluations.forEach(evaluation => {
         evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
       });
 
+      // Only run for rows with outputs that don't have function eval results yet
       const validRowIds = csvData.rows
         .filter(row => {
           const evaluation = evaluationsByRowId.get(row.id);
           const output = evaluation?.output;
-          return output !== null && output !== undefined && output !== '';
+          const hasOutput = output !== null && output !== undefined && output !== '';
+          
+          // Check if this row already has a function eval result for this config
+          const hasFunctionEvalResult = freshFunctionEvalResults.some(
+            r => r.config_id === configId && r.csv_row_id === row.id && r.prompt_id === currentPrompt.id
+          );
+          
+          return hasOutput && !hasFunctionEvalResult;
         })
         .map(row => row.id);
 
       if (validRowIds.length === 0) {
-        setErrorWithTimestamp('No rows with outputs found. Run prompts first to generate outputs.');
+        setErrorWithTimestamp('All rows with outputs already have function eval results for this configuration');
         return;
       }
 

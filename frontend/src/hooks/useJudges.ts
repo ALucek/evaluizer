@@ -162,22 +162,33 @@ export function useJudges(
     let hadErrors = false;
 
     try {
+      // Get evaluations and judge results to check what already exists
       const evaluations = await getEvaluationsForCSV(selectedFileId, currentPrompt.id);
+      const freshJudgeResults = await getJudgeResultsForCSV(selectedFileId, currentPrompt.id);
+      
       const evaluationsByRowId = new Map<number, Evaluation>();
       evaluations.forEach(evaluation => {
         evaluationsByRowId.set(evaluation.csv_row_id, evaluation);
       });
 
+      // Only run for rows with outputs that don't have judge results yet
       const validRowIds = csvData.rows
         .filter(row => {
           const evaluation = evaluationsByRowId.get(row.id);
           const output = evaluation?.output;
-          return output !== null && output !== undefined && output !== '';
+          const hasOutput = output !== null && output !== undefined && output !== '';
+          
+          // Check if this row already has a judge result for this config
+          const hasJudgeResult = freshJudgeResults.some(
+            r => r.config_id === configId && r.csv_row_id === row.id && r.prompt_id === currentPrompt.id
+          );
+          
+          return hasOutput && !hasJudgeResult;
         })
         .map(row => row.id);
 
       if (validRowIds.length === 0) {
-        setErrorWithTimestamp('No rows with outputs found. Run prompts first to generate outputs.');
+        setErrorWithTimestamp('All rows with outputs already have judge results for this configuration');
         return;
       }
 

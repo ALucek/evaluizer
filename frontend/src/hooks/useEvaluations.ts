@@ -236,6 +236,9 @@ export function useEvaluations(
     
     const allRowIds = csvData.rows.map(row => row.id);
     
+    // Clear all evaluation results before running prompts
+    // This is necessary because eval results are tied to specific outputs
+    // When outputs change, the old eval results become invalid
     if (judgeConfigs.length > 0) {
       await Promise.allSettled(
         judgeConfigs.map(config => 
