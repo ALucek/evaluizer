@@ -145,17 +145,21 @@ class EvalsBackedAdapter:
         async def evaluate_judge(judge_config):
             """Evaluate a single judge config"""
             try:
-                score, _ = await run_judge_evaluation(
+                score, raw_output = await run_judge_evaluation(
                     judge_config,
                     row_data,
                     summary,
                     self.available_columns
                 )
-                return f"judge_{judge_config.name}", score, f"{judge_config.name}: {score:.3f}"
+                # Clean up raw_output to remove the score tag if present to avoid confusion, 
+                # but keeping it is also fine. The reasoning is what matters.
+                # We'll truncate very long outputs to avoid blowing up context.
+                reasoning = raw_output[:2000] if raw_output else "No reasoning provided"
+                return f"judge_{judge_config.name}", score, f"Judge '{judge_config.name}' (Score: {score:.3f}):\n{reasoning}"
             except Exception as e:
                 import traceback
                 error_detail = f"{str(e)}"
-                return f"judge_{judge_config.name}", 0.0, f"{judge_config.name}: failed ({error_detail})"
+                return f"judge_{judge_config.name}", 0.0, f"Judge '{judge_config.name}' Failed: {error_detail}"
         
         # Wait for all judge evaluations in parallel
         if self.judge_configs:
@@ -180,18 +184,21 @@ class EvalsBackedAdapter:
                 score = float(result_dict["score"])
                 grader_scores[f"function_{function_eval_config.name}"] = score
                 all_scores.append(score)
-                feedback_parts.append(f"{function_eval_config.name}: {score:.3f}")
+                
+                details = result_dict.get("details", {})
+                details_str = f" Details: {details}" if details else ""
+                feedback_parts.append(f"Function '{function_eval_config.name}' (Score: {score:.3f}){details_str}")
             except Exception as e:
                 import traceback
                 error_detail = f"{str(e)}"
                 score = 0.0
                 grader_scores[f"function_{function_eval_config.name}"] = score
                 all_scores.append(score)
-                feedback_parts.append(f"{function_eval_config.name}: failed ({error_detail})")
+                feedback_parts.append(f"Function '{function_eval_config.name}' Failed: {error_detail}")
         
         # 3) Calculate combined score
         scalar = sum(all_scores) / len(all_scores) if all_scores else 0.0
-        feedback = "; ".join(feedback_parts) if feedback_parts else "All graders passed; keep precision and coverage."
+        feedback = "\n\n".join(feedback_parts) if feedback_parts else "All graders passed."
         
         trajectory = {
             "inputs": {"row_data": row_data, "csv_row_id": csv_row_id},

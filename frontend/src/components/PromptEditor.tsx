@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Prompt } from '../services/api';
 
 export interface LLMConfig {
@@ -1343,7 +1343,6 @@ export default function PromptEditor({ prompt, groupedPrompts, columns, onSave, 
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
-                            const versionLabel = v.commit_message || `v${v.version}`;
                             if (!window.confirm(`Are you sure you want to delete version ${v.version}${v.commit_message ? ` (${v.commit_message})` : ''}? This action cannot be undone.`)) {
                               return;
                             }

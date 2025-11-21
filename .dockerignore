@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+node_modules
+frontend/
+backend_data/
+backend/data/
+backend/__pycache__/
+*.pyc
+__pycache__
+.venv
+venv
+media/
+testing_datasets/
+.DS_Store
+evaluizer.db
+

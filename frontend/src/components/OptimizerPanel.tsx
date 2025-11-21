@@ -40,7 +40,7 @@ export default function OptimizerPanel({
   
   // State for best prompts
   const [bestPrompts, setBestPrompts] = useState<BestPromptsResponse | null>(null);
-  const [isLoadingBestPrompts, setIsLoadingBestPrompts] = useState(false);
+  const [_isLoadingBestPrompts, setIsLoadingBestPrompts] = useState(false);
   
   // GEPA state
   const [gepaConfigs, setGepaConfigs] = useState<GepaConfig[]>([]);

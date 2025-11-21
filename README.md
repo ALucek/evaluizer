@@ -4,13 +4,35 @@
 
 Evaluizer is a lightweight interface for evaluating and optimizing LLM prompts. It allows you to iterate on prompts, visualize outputs against datasets, manually annotate results, and run automated evaluations using both LLM judges and deterministic functions. It features **GEPA** (Genetic-Pareto), an optimization engine that evolves your prompts to maximize evaluation scores.
 
-## Install
+## Setup and Install
 
-Evaluizer consists of a Python/FastAPI backend and a React frontend.
+You can run Evaluizer either using Docker Compose (Recommended) or by setting up the services locally.
 
-### Backend
+### Option 1: Docker Compose
 
-The backend uses `uv` for dependency management.
+This is the quickest way to get up and running.
+
+1. **Configure Environment**
+   Copy the example environment file and add your API keys (e.g., OpenAI, Anthropic).
+   ```bash
+   cp .env.example .env
+   # Edit .env with your favorite editor
+   ```
+
+2. **Build and Run**
+   ```bash
+   docker-compose up --build
+   ```
+
+The application will be available at http://localhost:3000.
+
+### Option 2: Local Development
+
+For development, you can run the backend and frontend individually.
+
+#### Backend
+
+The backend is a FastAPI application that uses `uv` for dependency management.
 
 ```bash
 cd backend
@@ -22,15 +44,23 @@ uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend
+The API will be running at http://localhost:8000.
+
+#### Frontend
 
 The frontend is a Vite React app.
 
 ```bash
 cd frontend
+
+# Install dependencies
 npm install
+
+# Run the development server
 npm run dev
 ```
+
+The frontend will be running at http://localhost:3000.
 
 ## Usage
 
@@ -100,7 +130,7 @@ Contributions welcome! Feel free to submit a PR.
 
 Todo list:
 - Better processing (parallel vs sequential)
-- Docker setup
+- Run all rows that aren't filled
 
 ## License
 

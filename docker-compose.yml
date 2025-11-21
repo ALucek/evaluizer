@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend_data:/app/backend/data
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to use the mounted volume path
+      - DATABASE_URL=sqlite:///./data/evaluizer.db
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
