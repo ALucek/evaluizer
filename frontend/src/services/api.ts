@@ -677,6 +677,7 @@ export interface GepaProgress {
   best_score: number | null;
   message: string;
   updated_at: string;
+  started_at?: string;
   new_prompt_id?: number | null;
 }
 

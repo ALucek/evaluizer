@@ -1,6 +1,33 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Evaluation, JudgeResult, FunctionEvalResult, JudgeConfig, FunctionEvalConfig, Metric, listMetrics, createOrUpdateMetric, deleteMetric, GepaConfig, listGepaConfigs, createGepaConfig, updateGepaConfig, deleteGepaConfig, runGepa, subscribeToGepaProgress, GepaProgress, Prompt, BestPromptsResponse, getBestPromptsForMetrics } from '../services/api';
 
+function Timer({ startTime, updatedAt, status }: { startTime: string; updatedAt: string; status: string }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (status === 'running') {
+      const interval = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [status]);
+
+  const start = new Date(startTime).getTime();
+  // If completed or error, stop timer at updated_at
+  const end = (status === 'completed' || status === 'error')
+    ? new Date(updatedAt).getTime() 
+    : now;
+  
+  const elapsed = Math.max(0, Math.floor((end - start) / 1000));
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  
+  return (
+    <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>
+      {minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')}
+    </span>
+  );
+}
+
 interface OptimizerPanelProps {
   csvFileId: number | null;
   evaluations: Evaluation[];
@@ -308,6 +335,7 @@ export default function OptimizerPanel({
         best_score: null,
         message: 'Starting...',
         updated_at: new Date().toISOString(),
+        started_at: new Date().toISOString(),
       }
     }));
     
@@ -1182,7 +1210,7 @@ export default function OptimizerPanel({
                         </div>
                         
                         {/* Progress visualization */}
-                        {progress && progress.max_iterations > 0 && (
+                        {progress && (
                           <div style={{
                             padding: '0.5rem',
                             backgroundColor: progress.status === 'error' 
@@ -1202,29 +1230,38 @@ export default function OptimizerPanel({
                             <div style={{
                               display: 'flex',
                               justifyContent: 'space-between',
-                              fontSize: '0.5rem',
+                              alignItems: 'center',
+                              fontSize: '0.625rem',
                               color: 'var(--text-tertiary)',
                               fontFamily: 'monospace',
                             }}>
-                              <span>Iteration {progress.current_iteration} / {progress.max_iterations}</span>
-                              <span>{Math.round((progress.current_iteration / progress.max_iterations) * 100)}%</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ 
+                                  fontWeight: '700',
+                                  color: progress.status === 'error' ? '#ef4444' : progress.status === 'completed' ? '#22c55e' : 'var(--accent-primary)'
+                                }}>
+                                  {progress.status === 'running' ? 'RUNNING' : progress.status.toUpperCase()}
+                                </span>
+                                {progress.started_at && (
+                                  <Timer 
+                                    key={progress.started_at}
+                                    startTime={progress.started_at} 
+                                    updatedAt={progress.updated_at} 
+                                    status={progress.status} 
+                                  />
+                                )}
+                              </div>
+                              {progress.best_score !== null && (
+                                <span>Best: {progress.best_score.toFixed(3)}</span>
+                              )}
                             </div>
                             <div style={{
-                              width: '100%',
-                              height: '4px',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              overflow: 'hidden',
+                              fontSize: '0.625rem',
+                              color: 'var(--text-primary)',
+                              fontFamily: 'monospace',
+                              whiteSpace: 'pre-wrap',
                             }}>
-                              <div style={{
-                                width: `${Math.min(100, (progress.current_iteration / progress.max_iterations) * 100)}%`,
-                                height: '100%',
-                                backgroundColor: progress.status === 'error' 
-                                  ? '#ef4444' 
-                                  : progress.status === 'completed'
-                                  ? '#22c55e'
-                                  : 'var(--accent-primary)',
-                                transition: 'width 0.3s ease',
-                              }} />
+                              {progress.message}
                             </div>
                           </div>
                         )}

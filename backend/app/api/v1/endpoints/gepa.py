@@ -239,6 +239,9 @@ def _run_gepa_sync(config_id: int, csv_file_id: int) -> None:
         import litellm
         litellm.set_verbose = False
         litellm.drop_params = True
+        litellm.success_callback = []
+        litellm.failure_callback = []
+        litellm.callbacks = []
     except Exception:
         pass
     

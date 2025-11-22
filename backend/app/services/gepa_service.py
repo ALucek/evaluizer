@@ -235,8 +235,7 @@ class EvalsBackedAdapter:
         self._evaluation_count += 1
         update_progress(
             self.config_id,
-            message=f"Evaluating candidate {self._evaluation_count} on {len(inputs)} examples...",
-            current_iteration=self._evaluation_count
+            message=f"Evaluating candidate {self._evaluation_count} on {len(inputs)} examples..."
         )
         
         # Evaluate all items (using async batching for efficiency)
@@ -325,11 +324,11 @@ async def run_gepa(
     
     # Initialize progress BEFORE doing any work
     clear_progress(config_id)
+    # We'll update the total iterations after we know the dataset size
     update_progress(
         config_id,
         status="running",
         current_iteration=0,
-        max_iterations=gepa_config.max_metric_calls,
         message="Starting GEPA optimization..."
     )
     
@@ -399,6 +398,16 @@ async def run_gepa(
             "row_data": row_data,
             "csv_row_id": row.id
         })
+        
+    # Calculate estimated iterations based on dataset size and budget
+    # Each iteration evaluates the full trainset
+    trainset_size = len(trainset)
+    
+    update_progress(
+        config_id,
+        max_iterations=0,
+        message=f"Dataset prepared ({len(trainset)} train, {len(valset)} val)."
+    )
     
     # Create adapter
     # Handle migration: fallback to old fields if new fields don't exist (for backward compatibility)
@@ -425,7 +434,7 @@ async def run_gepa(
     try:
         update_progress(
             config_id,
-            message=f"Running optimization (max {gepa_config.max_metric_calls} iterations)..."
+            message="Running optimization..."
         )
         
         # Run GEPA optimization (using GEPA's default reflection)

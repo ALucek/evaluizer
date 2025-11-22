@@ -1,6 +1,14 @@
 import re
 from typing import Dict, Any, Optional, List
+import os
 from litellm import acompletion
+import litellm
+
+# Disable LiteLLM callbacks and telemetry to prevent logging worker timeouts
+os.environ["LITELLM_TELEMETRY"] = "FALSE"
+litellm.success_callback = []
+litellm.failure_callback = []
+litellm.callbacks = []
 
 JUDGE_PROMPT_PREFIX = """You are an expert evaluator tasked with assessing outputs according to specific criteria. Your role is to provide objective, consistent, and well-reasoned evaluations.
 

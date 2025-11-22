@@ -1,7 +1,7 @@
 """Progress tracking for GEPA optimization"""
 from typing import Dict, Optional, Any
 from threading import Lock
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Global progress store: config_id -> progress dict
 _progress_store: Dict[int, Dict[str, Any]] = {}
@@ -12,6 +12,8 @@ def update_progress(config_id: int, **kwargs) -> None:
     """Update progress for a GEPA config"""
     with _progress_lock:
         if config_id not in _progress_store:
+            # Use UTC with Z suffix for JS compatibility
+            now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
             _progress_store[config_id] = {
                 "status": "running",
                 "current_iteration": 0,
@@ -19,11 +21,12 @@ def update_progress(config_id: int, **kwargs) -> None:
                 "current_score": None,
                 "best_score": None,
                 "message": "",
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": now,
+                "started_at": now,
             }
         
         _progress_store[config_id].update(kwargs)
-        _progress_store[config_id]["updated_at"] = datetime.now().isoformat()
+        _progress_store[config_id]["updated_at"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def get_progress(config_id: int) -> Optional[Dict[str, Any]]:
